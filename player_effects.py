@@ -9,8 +9,9 @@ def gain_energy(player, energy):
     player.game_log.append(f"{player.name} gained {energy} energy.")
 
 class Player:
-    def __init__(self, name):
+    def __init__(self, name, game):
         self.name = name
+        self.game = game
         self.deck = []
         self.hand = []
         self.battlezone = []
@@ -22,6 +23,7 @@ class Player:
         self.life = 20
         self.applied_effects = {}
         self.game_log = []
+        self.equipment_cost_reduction = 0
 
     def draw_card(self):
         if self.deck:
@@ -56,15 +58,21 @@ class Player:
             print(f"{self.name}'s energy increased by {additional_energy} from effects, now at {self.energy}")
 
     def remove_energy_regen_effect(self, effect):
-        if effect in self.energy_regen_effects:
-            self.energy_regen_effects.remove(effect)
-            print(f"Removed energy regeneration effect from card ID {effect.source_id}")
+        if 'value' in effect:
+            self.energy_regen_effects = [e for e in self.energy_regen_effects if e['id'] != effect.get('id')]
+            self.recalculate_energy_regen()
+
+    def recalculate_energy_regen(self):
+        self.energy_regen = self.base_energy_regen + sum(effect['value'] for effect in self.energy_regen_effects)
 
     def play_card(self, card_index):
         if 0 <= card_index < len(self.hand):
             card = self.hand[card_index]
-            if self.energy >= card.cost:
-                self.energy -= card.cost
+            adjusted_cost = card.cost
+            if card.card_type == "equipment":
+                adjusted_cost = max(0, card.cost - self.calculate_equipment_cost_reduction())
+            if self.energy >= adjusted_cost:
+                self.energy -= adjusted_cost
                 self.hand.pop(card_index)
                 self.sort_card_to_zone(card)
                 for effect in card.effects:
@@ -95,7 +103,8 @@ class Player:
 
     def display_hand(self):
         for idx, card in enumerate(self.hand, 1):
-            print(f"{idx}: {card.name} (Attack: {card.attack}, Defense: {card.defense}, Cost: {card.cost})")
+            adjusted_cost = card.get_adjusted_cost(self)
+            print(f"{idx}: {card.name} (Attack: {card.attack}, Defense: {card.defense}, Cost: {adjusted_cost})")
 
     def display_graveyard(self):
         for idx, card in enumerate(self.graveyard, 1):
@@ -114,6 +123,33 @@ class Player:
             return card_to_discard
         return None
 
+    def calculate_equipment_cost_reduction(self):
+        reduction = 0
+        for card in self.battlezone:
+            if card.name == "Tactical Drone":
+                reduction += 1
+        return reduction
+
+    def equip_card(self, equipment_index, target_index):
+        if 0 <= equipment_index < len(self.environs) and 0 <= target_index < len(self.battlezone):
+            equipment = self.environs[equipment_index]
+            target = self.battlezone[target_index]
+            if equipment.card_type == "equipment" and target.card_type == "creature":
+                target.equip(equipment)
+                self.game.log_action(f"{self.name} equipped {equipment.name} to {target.name}")
+                return True
+        return False
+
+    def unequip_card(self, creature_index):
+        if 0 <= creature_index < len(self.battlezone):
+            creature = self.battlezone[creature_index]
+            if creature.equipment:
+                equipment = creature.equipment
+                equipment.unequip()
+                self.game.log_action(f"{self.name} unequipped {equipment.name} from {creature.name}")
+                return True
+        return False
+
 class Effect:
     def __init__(self, effect_type, value, trigger, source_id):
         self.effect_type = effect_type
@@ -123,14 +159,15 @@ class Effect:
         self.applied = False
 
     def apply(self, game: 'Game', player: 'Player', card_played=None):
-        if self.applied:
+        if self.applied and self.trigger != "constant":
             return
         effect_handlers = {
             "increase_energy_regen": self.increase_energy_regen,
             "draw_cards": self.draw_cards,
             "deal_damage": self.deal_damage,
             "destroy_equipment": self.destroy_equipment,
-            "destroy_enchantment": self.destroy_enchantment
+            "destroy_enchantment": self.destroy_enchantment,
+            "reduce_equipment_cost": self.reduce_equipment_cost
         }
         handler = effect_handlers.get(self.effect_type)
         if handler:
@@ -183,6 +220,10 @@ class Effect:
                 game.log_action(f"{player.name} tried to destroy a {card_type} but the target was invalid.")
         else:
             game.log_action(f"{player.name} tried to destroy a {card_type} but no valid target was found.")
+
+    def reduce_equipment_cost(self, game: 'Game', player: 'Player'):
+        player.equipment_cost_reduction += self.value
+        game.log_action(f"{player.name}'s equipment cost reduced by {self.value}")
 
 class Trigger:
     def __init__(self, trigger_type):

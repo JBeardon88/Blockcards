@@ -1,4 +1,5 @@
 import uuid
+from colorama import Fore, Style
 
 class Card:
     def __init__(self, name, attack, defense, cost, description, card_type, effects=None, flavor_text="", owner=None):
@@ -14,6 +15,8 @@ class Card:
         self.summoning_sickness = True  # True when first summoned
         self.flavor_text = flavor_text
         self.owner = owner
+        self.equipped_to = None  # Track which creature this equipment is attached to
+        self.equipment = None  # Track what equipment is attached to this creature
 
     def __str__(self):
         return f"{self.name} (Type: {self.card_type}, Cost: {self.cost}, ATK/DEF: {self.attack}/{self.defense}, Flavor Text: {self.flavor_text}, ID: {self.id})"
@@ -35,6 +38,10 @@ class Card:
 
 
     def destroy(self, game):
+        if self.card_type == "creature" and self.equipment:
+            equipment = self.equipment
+            equipment.unequip()
+            game.log_action(f"{equipment.name} unequipped from {self.name} and returned to environs.")
         # Remove the card from wherever it is
         for zone in [self.owner.battlezone, self.owner.environs, self.owner.hand, self.owner.deck]:
             if self in zone:
@@ -43,7 +50,7 @@ class Card:
 
         # Remove the card's effects from the game state
         for effect in self.effects:
-            if effect['trigger'] == 'upkeep':
+            if 'type' in effect and effect['type'] == 'increase_energy_regen':
                 self.owner.remove_energy_regen_effect(effect)
 
         # Always move the card to the owner's graveyard
@@ -65,3 +72,35 @@ class Card:
             print(f"DEBUG: {self.name} (ID: {self.id}) was destroyed")
             return True  # Indicate that the card was destroyed
         return False
+
+    def apply_effects(self, game, player):
+        for effect in self.effects:
+            if 'trigger' in effect and effect['trigger'] == 'constant' and self.name == "Tactical Drone":
+                player.equipment_cost_reduction += effect.get('value', 0)
+
+    def remove_effects(self, game, player):
+        for effect in self.effects:
+            if 'trigger' in effect and effect['trigger'] == 'constant' and self.name == "Tactical Drone":
+                player.equipment_cost_reduction -= effect.get('value', 0)
+
+    def get_adjusted_cost(self, player):
+        original_cost = str(self.cost).rjust(3)
+        if self.card_type == "equipment":
+            adjusted_cost = max(0, self.cost - player.equipment_cost_reduction)
+            if adjusted_cost != self.cost:
+                return f"{Fore.BLUE}{str(adjusted_cost).rjust(3)}{Style.RESET_ALL}"
+        return original_cost
+
+    def equip(self, target):
+        if self.card_type == "equipment" and target.card_type == "creature":
+            if self.equipped_to:
+                self.unequip()
+            self.equipped_to = target
+            target.equipment = self
+            # We'll apply effects later
+
+    def unequip(self):
+        if self.card_type == "equipment" and self.equipped_to:
+            self.equipped_to.equipment = None
+            self.equipped_to = None
+            # We'll remove effects later

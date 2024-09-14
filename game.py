@@ -9,13 +9,14 @@ from colorama import Fore, Back, Style
 from ai import ai_make_decisions, ai_upkeep, ai_main_phase, ai_combat_phase, ai_end_phase, ai_can_play_card
 from player_effects import Player, Effect, Trigger
 import textwrap
+from combat import combat_phase as execute_combat_phase
 
 class Game:
     def __init__(self, player_name, opponent_name):
         self.card_pool = []
         self.load_card_pool()
-        self.player = Player(player_name)
-        self.opponent = Player(opponent_name)
+        self.player = Player(player_name, self)
+        self.opponent = Player(opponent_name, self)
         self.board = Board(self.player, self.opponent, self)  # Pass the Game instance to the Board
         self.turn_counter = 0
         self.player_turn = True
@@ -23,6 +24,8 @@ class Game:
         self.game_over = False
         self.turn_phase = ""
         self.last_played_card = None
+        
+        self.log_action(f"Game initialized. Player energy: {self.player.energy}, Opponent energy: {self.opponent.energy}")
         
         #self.log_action(f"Game initialized. Player energy: {self.player.energy}, Opponent energy: {self.opponent.energy}")
 
@@ -54,51 +57,73 @@ class Game:
             
             # Add a small delay and prompt between turns
             input("Press Enter to continue to the next turn...")
+            
+            # Ensure the next turn starts properly
+            if not self.player_turn:
+                self.log_action(f"Opponent's Turn {self.turn_counter + 1} is about to start.")
         
         self.log_action("Game Over!")
 
+    def apply_constant_effects(self, player):
+        player.equipment_cost_reduction = 0  # Reset the reduction
+        for card in player.battlezone + player.environs:
+            card.apply_effects(self, player)
+
     def turn_flow(self, current_player):
-        # Upkeep Phase
-        self.turn_phase = "upkeep"
-        upkeep_log, color = upkeep_phase(self.board, player=current_player==self.player)
-        self.log_action(upkeep_log, color)
-        self.update_display()
+        print(f"DEBUG: Starting turn for {current_player.name}")
 
-        # Main Phase 1
-        self.turn_phase = "main_phase_1"
-        self.log_action(f"{current_player.name}'s First Main Phase")
-        self.main_phase(current_player)
-        self.update_display()
-
-        # Combat Phase
-        self.turn_phase = "combat"
-        self.log_action(f"{current_player.name}'s Combat Phase")
-        self.combat_phase(current_player)
-        self.update_display()
-
-        # Main Phase 2
-        self.turn_phase = "main_phase_2"
-        self.log_action(f"{current_player.name}'s Second Main Phase")
-        self.main_phase(current_player)
-        self.update_display()
-
-        # End Phase
-        self.turn_phase = "end"
-        end_log_entries = end_phase(self, player=current_player==self.player)
-        for entry in end_log_entries:
-            self.log_action(entry[0], entry[1])
-        self.update_display()
+        # Apply constant effects at the start of each turn
+        self.apply_constant_effects(current_player)
 
         if current_player == self.player:
-            input("Press Enter to end your turn...")
+            # Human player turn (keep existing logic)
+            # Upkeep Phase
+            self.turn_phase = "upkeep"
+            upkeep_log, color = upkeep_phase(self.board, player=True)
+            self.log_action(upkeep_log, color)
+            self.update_display()
+
+            # Main Phase 1
+            self.turn_phase = "main_phase_1"
+            self.log_action(f"{current_player.name}'s First Main Phase")
+            self.main_phase(current_player)
+            self.update_display()
+
+            # Combat Phase
+            self.turn_phase = "combat"
+            self.log_action(f"{current_player.name}'s Combat Phase")
+            self.combat_phase(current_player)
+            self.update_display()
+
+            # Main Phase 2
+            self.turn_phase = "main_phase_2"
+            self.log_action(f"{current_player.name}'s Second Main Phase")
+            self.main_phase(current_player)
+            self.update_display()
+
+            # End Phase
+            self.turn_phase = "end"
+            end_log_entries = end_phase(self, player=True)
+            for entry in end_log_entries:
+                self.log_action(entry[0], entry[1])
+            self.update_display()
         else:
-            input("Press Enter to start your turn...")
+            # AI player turn
+            print("DEBUG: Starting opponent turn structure")
+            opponent_turn_structure(self)
+            self.update_display()
+
+    # Remove this line as it's already handled in the start method
+    # self.player_turn = not self.player_turn
+
+    # Remove the input prompt here as it's already in the start method
+    # input("Press Enter to continue to the next turn...")
 
     def apply_effects(self, player):
         for card in player.battlezone + player.environs:
             for effect in card.effects:
                 if 'trigger' not in effect:
-                    print(f"DEBUG: Effect missing 'trigger' key in card {card.name} (ID: {card.id})")
+                    #print(f"DEBUG: Effect missing 'trigger' key in card {card.name} (ID: {card.id})")
                     continue
                 trigger = Trigger(effect['trigger'])
                 if trigger.check(self, player):
@@ -109,7 +134,7 @@ class Game:
         for card in player.battlezone + player.environs:
             for effect in card.effects:
                 if 'trigger' not in effect:
-                    print(f"DEBUG: Effect missing 'trigger' key in card {card.name} (ID: {card.id})")
+                    #print(f"DEBUG: Effect missing 'trigger' key in card {card.name} (ID: {card.id})")
                     continue
                 if effect['trigger'] == trigger_type:
                     if trigger_type == "on_play_equipment" and card_played and card_played.card_type == "equipment":
@@ -123,27 +148,130 @@ class Game:
     
     
     def main_phase(self, current_player):
-        if current_player == self.player:
-            # Human player logic
-            while True:
-                display_game_state(self)
-                print("Main Phase - Enter command: 1. Play, 2. Pass, 3. Game Log, 4. Graveyard, 5. Card Info")
-                command = input("Enter command number: ").strip().lower()
-                if command == "2" or command == "pass":
-                    break
-                elif command == "1" or command == "play":
-                    self.play_card(current_player)
-                elif command == "3" or command == "gamelog":
-                    self.display_gamelog()
-                elif command == "4" or command == "graveyard":
+        while True:
+            self.update_display()
+            options = [
+                "1. Play card", "2. Pass", "3. Game log",
+                "4. Graveyard", "5. Card info"
+            ]
+            
+            # Add equip and unequip options if there are valid targets
+            if self.has_equipment_to_equip(current_player):
+                options.append("6. Equip")
+            if self.has_equipment_to_unequip(current_player):
+                options.append("7. Unequip")
+            
+            print("\nMain Phase Options:")
+            print(" | ".join(options))
+            
+            if current_player == self.player:
+                choice = input("Enter your choice (1-7): ")
+                if choice == "1":
+                    self.play_card_from_hand()
+                elif choice == "2":
+                    break  # Pass and end the main phase
+                elif choice == "3":
+                    self.display_gamelog()  # Changed from display_game_log to display_gamelog
+                elif choice == "4":
                     self.display_graveyard()
-                elif command == "5" or command == "info":
-                    self.card_info_menu()
+                elif choice == "5":
+                    self.show_card_info()
+                elif choice == "6" and "6. Equip" in options:
+                    self.equip_card()
+                elif choice == "7" and "7. Unequip" in options:
+                    self.unequip_card()
                 else:
-                    print("Unknown command! Use '1', '2', '3', '4', or '5'.")
+                    print("Invalid choice. Please try again.")
+            else:
+                # AI logic for main phase
+                break
+
+    def has_equipment_to_equip(self, player):
+        return any(card.card_type == "equipment" and not card.equipped_to for card in player.environs)
+
+    def has_equipment_to_unequip(self, player):
+        return any(card.equipment for card in player.battlezone)
+
+    def play_card_from_hand(self):
+        print("\nSelect a card to play:")
+        card_index = int(input("Enter the index of the card to play: ")) - 1
+        if 0 <= card_index < len(self.player.hand):
+            card = self.player.hand[card_index]
+            if self.board.play_card(card, player=True):
+                print(f"Played {card.name} successfully.")
+            else:
+                print("Failed to play the card.")
         else:
-            # AI logic
-            ai_main_phase(self)
+            print("Invalid card index.")
+
+    def equip_card(self):
+        print("\nSelect an equipment card to equip:")
+        equipment_cards = display_cards_in_play(self.player, card_type="equipment")
+        if not equipment_cards:
+            print("No equipment cards available to equip.")
+            return
+
+        equipment_index = int(input("Enter the index of the equipment card: ")) - 1
+        if equipment_index < 0 or equipment_index >= len(equipment_cards):
+            print("Invalid equipment index.")
+            return
+
+        equipment = equipment_cards[equipment_index]
+        equip_cost = 1  # You can adjust this cost as needed
+
+        if self.player.energy < equip_cost:
+            print(f"Not enough energy to equip. Cost: {equip_cost}, Your energy: {self.player.energy}")
+            return
+
+        print("\nSelect a creature to equip it to:")
+        creature_cards = display_cards_in_play(self.player, card_type="creature")
+        if not creature_cards:
+            print("No creatures available to equip to.")
+            return
+
+        creature_index = int(input("Enter the index of the target creature: ")) - 1
+        if creature_index < 0 or creature_index >= len(creature_cards):
+            print("Invalid creature index.")
+            return
+
+        creature = creature_cards[creature_index]
+
+        if hasattr(creature, 'equipment') and creature.equipment:
+            print(f"{creature.name} already has equipment. Unequip first.")
+            return
+
+        self.player.energy -= equip_cost
+        creature.equipment = equipment
+        equipment.equipped_to = creature
+        print(f"Equipment {equipment.name} successfully equipped to {creature.name} for {equip_cost} energy.")
+
+    def unequip_card(self):
+        print("\nSelect a creature to unequip:")
+        creature_cards = display_cards_in_play(self.player, card_type="creature", show_equipment=True)
+        if not creature_cards:
+            print("No creatures with equipment to unequip.")
+            return
+
+        creature_index = int(input("Enter the index of the creature: ")) - 1
+        if creature_index < 0 or creature_index >= len(creature_cards):
+            print("Invalid creature index.")
+            return
+
+        creature = creature_cards[creature_index]
+        if not creature.equipment:
+            print(f"{creature.name} has no equipment to unequip.")
+            return
+
+        equipment = creature.equipment
+        creature.equipment = None
+        equipment.equipped_to = None
+
+        print(f"Successfully unequipped {equipment.name} from {creature.name}.")
+
+        # Optionally, you can add an energy cost for unequipping
+        # unequip_cost = 1
+        # self.player.energy -= unequip_cost
+        # print(f"Unequipping cost {unequip_cost} energy.")
 
     def card_info_menu(self):
         while True:
@@ -180,33 +308,39 @@ class Game:
                 
     def combat_phase(self, current_player):
         if current_player == self.player:
-            # Human player logic
             while True:
-                display_game_state(self)
-                print("Combat Phase - Enter command: 1. Attack, 2. Pass, 3. Game Log, 4. Graveyard, 5. Card Info by ID")
-                command = input("Enter command number: ").strip().lower()
-                if command == "2" or command == "pass":
+                self.update_display()
+                options = [
+                    "1. Attack", "2. Pass", "3. Game log",
+                    "4. Graveyard", "5. Card info"
+                ]
+                print("\nCombat Phase Options:")
+                print(" | ".join(options))
+                
+                choice = input("Enter your choice (1-5): ")
+                if choice == "1":
+                    self.execute_combat_phase()
+                elif choice == "2":
                     break
-                elif command == "1" or command == "attack":
-                    execute_combat_phase(self)
-                    break
-                elif command == "3" or command == "gamelog":
-                    self.display_gamelog()
-                elif command == "4" or command == "graveyard":
+                elif choice == "3":
+                    self.display_game_log()
+                elif choice == "4":
                     self.display_graveyard()
-                elif command == "5" or command == "info id":
-                    id_prefix = input("Enter the first four digits of the card ID: ").strip().lower()
-                    self.display_card_info(id_prefix)
+                elif choice == "5":
+                    self.show_card_info()
                 else:
-                    print("Unknown command! Use '1', '2', '3', '4', or '5'.")
+                    print("Invalid choice. Please try again.")
         else:
-            # AI logic
-            execute_combat_phase(self)
+            # AI combat logic
+            self.execute_combat_phase()
+
+    def execute_combat_phase(self):
+        execute_combat_phase(self)
 
     def load_card_pool(self):
-        with open('technobros.json') as f:
-            self.card_pool = json.load(f)
-            print(f"DEBUG: Loaded card pool with {len(self.card_pool)} cards")
+            with open('technobros.json') as f:
+                self.card_pool = json.load(f)
+                print(f"DEBUG: Loaded card pool with {len(self.card_pool)} cards")
 
     def initial_draw(self):
         for _ in range(6):
@@ -214,7 +348,7 @@ class Game:
             self.opponent.draw_card()
         display_game_state(self)
 
-            
+        
     def play_card(self, player, card=None):
         if player == self.player:
             # Human player logic
@@ -251,6 +385,7 @@ class Game:
                 
     def summon_effects(self, card, player):
         print(f"DEBUG: Summoning effects for {card.name} (ID: {card.id})")
+        card.apply_effects(self, player)
         for effect in card.effects:
             if effect['trigger'] == 'on_summon':
                 effect_instance = Effect(effect['type'], effect.get('value'), effect['trigger'], card.id)

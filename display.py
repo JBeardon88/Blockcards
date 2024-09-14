@@ -27,7 +27,16 @@ def display_game_state(game):
     print("__________________________")
     print(f"{Fore.GREEN}Player - Life: {game.player.life}, Energy: {game.player.energy}, Deck: {len(game.player.deck)} cards, Hand: {len(game.player.hand)} cards, Graveyard: {len(game.player.graveyard)} cards{Style.RESET_ALL}")
     print("CARDS IN HAND:")
-    display_hand(game.player.hand)
+    print("Index Name                Type ERG ATK/DEF ID     Description")
+    print("-" * 75)
+    for i, card in enumerate(game.player.hand, 1):
+        adjusted_cost = card.get_adjusted_cost(game.player)
+        name = card.name.ljust(20)
+        card_type = card.card_type[:3].ljust(4)
+        atk_def = f"{card.attack}/{card.defense}".ljust(5)
+        id_short = card.id[:8]
+        description = card.description[:50] + "..." if len(card.description) > 50 else card.description
+        print(f"{i:<5} {name} {card_type} {adjusted_cost:<3} {atk_def} {id_short} {description}")
     print("__________________________")
     print("Game Log:")
     for entry, color in game.game_log[-5:]:
@@ -39,36 +48,51 @@ def display_battlezone(battlezone):
     card_lines = []
     for idx, card in enumerate(battlezone, 1):
         name_display = f"~~{card.name}~~" if card.tapped else card.name
+        equipment_display = f"EQP: {Fore.BLUE}{card.equipment.id[:4]}{Style.RESET_ALL}" if card.equipment else "EQP: None"
         card_info = [
             f"| {idx}: {name_display[:max_width-4]}",
             f"| Type: {card.card_type[:3]} Cost: {card.cost}",
-            f"| ATK/DEF: {card.attack}/{card.defense}",
+            f"| A/D: {card.attack}/{card.defense} {equipment_display}",
             f"| ID: {str(card.id)[:8]}",
-            f"| {card.description[:max_width-2]}"
+            f"| {card.description[:max_width-4]}"  # Truncate description if too long
         ]
         card_lines.append(card_info)
 
     # Transpose the card lines to display them side by side
-    for line_idx in range(5):  # Changed to 5 lines
+    for line_idx in range(5):
         for card_info in card_lines:
             print(f"{card_info[line_idx]:<{max_width}}", end=" ")
         print()
 
 def display_environs(environs):
-    max_width = 25  # Increased to accommodate UUID
+    max_width = 25
     card_lines = []
     for idx, card in enumerate(environs, 1):
+        if card.card_type == "equipment":
+            if card.equipped_to:
+                name_display = f"{Fore.BLUE}{card.name[:max_width-4]}{Style.RESET_ALL}"
+                id_display = f"{Fore.BLUE}ID: {str(card.id)[:8]}{Style.RESET_ALL}"
+                equipped_to = f"On: {card.equipped_to.name[:8]}"
+            else:
+                name_display = card.name[:max_width-4]
+                id_display = f"ID: {str(card.id)[:8]}"
+                equipped_to = ""
+        else:
+            name_display = card.name[:max_width-4]
+            id_display = f"ID: {str(card.id)[:8]}"
+            equipped_to = ""
+
         card_info = [
-            f"| {idx}: {card.name[:max_width-4]}",
+            f"| {idx}: {name_display}",
             f"| Type: {card.card_type[:3]} Cost: {card.cost}",
-            f"| ATK/DEF: {card.attack}/{card.defense}",
-            f"| ID: {str(card.id)[:8]}",  # Display first 8 characters of UUID
-            f"| {card.description[:max_width-2]}"  # Add description line
+            f"| A/D: {card.attack}/{card.defense}",
+            f"| {id_display}",
+            f"| {equipped_to}"
         ]
         card_lines.append(card_info)
 
     # Transpose the card lines to display them side by side
-    for line_idx in range(5):  # Changed to 5 lines
+    for line_idx in range(5):
         for card_info in card_lines:
             print(f"{card_info[line_idx]:<{max_width}}", end=" ")
         print()
@@ -126,15 +150,27 @@ def display_card_info(cards):
         print("=" * 50)
     input("\nPress Enter to continue...")
 
-def display_cards_in_play(player):
+def display_cards_in_play(player, card_type=None, show_equipment=False):
     print(f"\n{player.name}'s Cards in Play:")
     all_cards = player.battlezone + player.environs
-    for i, card in enumerate(all_cards, 1):
-        print(f"{i}. {card.name} (Type: {card.card_type}, Cost: {card.cost}, ATK/DEF: {card.attack}/{card.defense}, ID: {card.id})")
+    filtered_cards = [card for card in all_cards if card_type is None or card.card_type == card_type]
+    
+    if not filtered_cards:
+        print(f"No {card_type} cards in play.")
+        return []
 
+    for i, card in enumerate(filtered_cards, 1):
+        equipment_info = ""
+        if show_equipment and card.card_type == "creature":
+            if hasattr(card, 'equipment') and card.equipment:
+                equipment_info = f" EQ: {card.equipment.id[:4]}"
+            else:
+                equipment_info = " EQ: None"
         
-def display_cards_in_play(player):
-    print(f"\n{player.name}'s Cards in Play:")
-    all_cards = player.battlezone + player.environs
-    for i, card in enumerate(all_cards, 1):
-        print(f"{i}. {card.name} (Type: {card.card_type}, Cost: {card.cost}, ATK/DEF: {card.attack}/{card.defense}, ID: {card.id})")
+        print(f"{i}: {card.name}")
+        print(f"Type: {card.card_type[:3]} Cost: {card.cost}")
+        print(f"ATK/DEF: {card.attack}/{card.defense}{equipment_info}")
+        print(f"ID: {card.id}")
+        print()  # Empty line for spacing between cards
+
+    return filtered_cards

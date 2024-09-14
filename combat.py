@@ -5,6 +5,7 @@ def combat_phase(game):
     print("\nCombat Phase:")
     attacking_player = game.player if game.player_turn else game.opponent
     defending_player = game.opponent if game.player_turn else game.player
+    board = game.board
 
     # 1. Declare attackers
     attackers = declare_attackers(game, attacking_player)
@@ -14,7 +15,10 @@ def combat_phase(game):
     game.update_display()
 
     # 2. Declare blockers
-    blockers = declare_blockers(game, defending_player, attackers)
+    if defending_player == game.opponent:
+        blockers = ai_declare_blockers(game, defending_player, attackers)
+    else:
+        blockers = declare_blockers(game, defending_player, attackers)
     game.update_display()
 
     # 3. Resolve combat

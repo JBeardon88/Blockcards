@@ -94,7 +94,10 @@ class Board:
 
     def play_card(self, card, player=True):
         target_player = self.player if player else self.opponent
-        if target_player.spend_energy(card.cost):
+        adjusted_cost = card.cost
+        if card.card_type == "equipment":
+            adjusted_cost = max(0, card.cost - target_player.calculate_equipment_cost_reduction())
+        if target_player.spend_energy(adjusted_cost):
             card.owner = target_player  # Set the card's owner
             target_player.hand.remove(card)
             if card.card_type == "creature":
@@ -129,7 +132,7 @@ class Board:
         else:
             self.game.log_action(f"Insufficient energy to play {card.name}.")
             return False
-        
+
     def get_all_cards(self):
         return self.player.battlezone + self.player.environs + self.player.graveyard + self.opponent.battlezone + self.opponent.environs + self.opponent.graveyard
 
@@ -140,6 +143,11 @@ class Board:
             target_player.hand.remove(card)
         elif card in target_player.battlezone:
             target_player.battlezone.remove(card)
+            # Remove constant effects when a creature leaves the battlefield
+            for effect in card.effects:
+                if effect['trigger'] == 'constant':
+                    effect_instance = Effect(effect['type'], -effect['value'], effect['trigger'], card.id)
+                    effect_instance.apply(self.game, target_player)
         elif card in target_player.environs:
             target_player.environs.remove(card)
         card.owner.graveyard.append(card)  # Always move to the owner's graveyard
