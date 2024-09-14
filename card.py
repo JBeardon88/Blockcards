@@ -135,12 +135,18 @@ class Card:
             if effect['type'] == 'gain_attack':
                 target.attack += effect['value']
                 print(f"DEBUG: {target.name}'s attack increased by {effect['value']} to {target.attack}")
+            elif effect['type'] == 'gain_defense':
+                target.defense += effect['value']
+                print(f"DEBUG: {target.name}'s defense increased by {effect['value']} to {target.defense}")
 
     def remove_equipment_effects(self, target):
         for effect in self.effects:
             if effect['type'] == 'gain_attack':
                 target.attack -= effect['value']
                 print(f"DEBUG: {target.name}'s attack decreased by {effect['value']} to {target.attack}")
+            elif effect['type'] == 'gain_defense':
+                target.defense -= effect['value']
+                print(f"DEBUG: {target.name}'s defense decreased by {effect['value']} to {target.defense}")
 
 def check_and_destroy(self, game):
     if self.defense <= 0:

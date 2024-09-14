@@ -127,7 +127,8 @@
         "description": "Equip to a creature. That creature gains +3 defense.",
         "card_type": "equipment",
         "effects": [
-            {"type": "gain_defense", "value": 3, "target": "creature"}
+            {"type": "gain_defense", "value": 3, "target": "creature"},
+            {"type": "gain_attack", "value": -1, "target": "creature"}
         ]
     },
     {

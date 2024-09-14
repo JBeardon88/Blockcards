@@ -181,7 +181,8 @@ class Effect:
             "deal_damage": self.deal_damage,
             "destroy_equipment": self.destroy_equipment,
             "destroy_enchantment": self.destroy_enchantment,
-            "reduce_equipment_cost": self.reduce_equipment_cost
+            "reduce_equipment_cost": self.reduce_equipment_cost,
+            "gain_defense": self.gain_defense
         }
         handler = effect_handlers.get(self.effect_type)
         if handler:
@@ -217,6 +218,15 @@ class Effect:
         else:
             game.log_action(f"{player.name} tried to deal damage but no valid target was found.")
 
+    def gain_defense(self, game: 'Game', player: 'Player'):
+        target = game.select_target(card_type="creature", effect_description="Select a target to gain defense:", player=player)
+        if target:
+            target.defense += self.value
+            game.log_action(f"{player.name} gained {self.value} defense to {target.name}")
+        else:
+            game.log_action(f"{player.name} tried to gain defense but no valid target was found.")
+
+
     def destroy_equipment(self, game: 'Game', player: 'Player'):
         target = game.select_target(card_type="equipment", effect_description="Select an equipment to destroy:", player=player)
         self.handle_destruction(game, player, target, "equipment")
@@ -246,6 +256,9 @@ class Effect:
     def reduce_equipment_cost(self, game: 'Game', player: 'Player'):
         player.equipment_cost_reduction += self.value
         game.log_action(f"{player.name}'s equipment cost reduced by {self.value}")
+
+
+
 
 class Trigger:
     def __init__(self, trigger_type):
