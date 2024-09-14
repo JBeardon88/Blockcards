@@ -1,5 +1,7 @@
 import uuid
 from colorama import Fore, Style
+from utils import check_and_destroy
+
 
 class Card:
     def __init__(self, name, attack, defense, cost, description, card_type, effects=None, flavor_text="", owner=None):
@@ -11,8 +13,8 @@ class Card:
         self.card_type = card_type
         self.effects = effects if effects is not None else []
         self.id = str(uuid.uuid4())[:8]  # Generate a new UUID and take first 8 characters
-        self.tapped = False
-        self.summoning_sickness = True  # True when first summoned
+        self._summoning_sickness = True
+        self._tapped = False
         self.flavor_text = flavor_text
         self.owner = owner
         self.equipped_to = None  # Track which creature this equipment is attached to
@@ -22,10 +24,36 @@ class Card:
         return f"{self.name} (Type: {self.card_type}, Cost: {self.cost}, ATK/DEF: {self.attack}/{self.defense}, Flavor Text: {self.flavor_text}, ID: {self.id})"
 
     def tap(self):
-        self.tapped = True
+        self._tapped = True
 
     def untap(self):
-        self.tapped = False
+        self._tapped = False
+    
+    @property
+    def summoning_sickness(self):
+        return self._summoning_sickness
+
+    @summoning_sickness.setter
+    def summoning_sickness(self, value):
+        if not isinstance(value, bool):
+            raise ValueError("summoning_sickness must be a boolean value")
+        self._summoning_sickness = value
+
+    @property
+    def tapped(self):
+        return self._tapped
+
+    @tapped.setter
+    def tapped(self, value):
+        if not isinstance(value, bool):
+            raise ValueError("tapped must be a boolean value")
+        self._tapped = value
+
+    def can_attack(self):
+        return not (self.summoning_sickness or self.tapped)
+
+    def can_use_tap_ability(self):
+        return not (self.summoning_sickness or self.tapped)
 
     def remove_summoning_sickness(self):
         self.summoning_sickness = False
@@ -38,25 +66,17 @@ class Card:
 
 
     def destroy(self, game):
-        if self.card_type == "creature" and self.equipment:
-            equipment = self.equipment
-            equipment.unequip()
-            game.log_action(f"{equipment.name} unequipped from {self.name} and returned to environs.")
-        # Remove the card from wherever it is
-        for zone in [self.owner.battlezone, self.owner.environs, self.owner.hand, self.owner.deck]:
-            if self in zone:
-                zone.remove(self)
+        while self.defense <= 0:
+            if self.equipment:
+                game.log_action(f"{self.equipment.name} was unequipped from {self.name}")
+                self.equipment.unequip()
+                self.equipment = None
+            else:
+                owner = game.player if self in game.player.battlezone else game.opponent
+                owner.battlezone.remove(self)
+                owner.graveyard.append(self)
+                game.log_action(f"{self.name} was destroyed and moved to {owner.name}'s graveyard.")
                 break
-
-        # Remove the card's effects from the game state
-        for effect in self.effects:
-            if 'type' in effect and effect['type'] == 'increase_energy_regen':
-                self.owner.remove_energy_regen_effect(effect)
-
-        # Always move the card to the owner's graveyard
-        self.owner.graveyard.append(self)
-        game.log_action(f"{self.name} (ID: {self.id}) was destroyed and moved to {self.owner.name}'s graveyard.")
-
 
     def fight(self, other):
         self.defense -= other.attack
@@ -92,15 +112,36 @@ class Card:
         return original_cost
 
     def equip(self, target):
-        if self.card_type == "equipment" and target.card_type == "creature":
+        if self.card_type == "equipment" and target.card_type == "creature" and target.can_use_tap_ability():
             if self.equipped_to:
                 self.unequip()
             self.equipped_to = target
             target.equipment = self
-            # We'll apply effects later
+            self.apply_equipment_effects(target)
+            print(f"DEBUG: {self.name} equipped to {target.name}")
+            return True
+        return False
 
     def unequip(self):
-        if self.card_type == "equipment" and self.equipped_to:
+        if self.equipped_to:
+            self.remove_equipment_effects(self.equipped_to)
+            equipped_to_name = self.equipped_to.name if self.equipped_to else "Unknown"
             self.equipped_to.equipment = None
             self.equipped_to = None
-            # We'll remove effects later
+            print(f"DEBUG: {self.name} unequipped from {equipped_to_name}")
+
+    def apply_equipment_effects(self, target):
+        for effect in self.effects:
+            if effect['type'] == 'gain_attack':
+                target.attack += effect['value']
+                print(f"DEBUG: {target.name}'s attack increased by {effect['value']} to {target.attack}")
+
+    def remove_equipment_effects(self, target):
+        for effect in self.effects:
+            if effect['type'] == 'gain_attack':
+                target.attack -= effect['value']
+                print(f"DEBUG: {target.name}'s attack decreased by {effect['value']} to {target.attack}")
+
+def check_and_destroy(self, game):
+    if self.defense <= 0:
+        self.destroy(game)

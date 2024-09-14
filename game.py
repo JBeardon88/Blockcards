@@ -19,6 +19,7 @@ class Game:
         self.opponent = Player(opponent_name, self)
         self.board = Board(self.player, self.opponent, self)  # Pass the Game instance to the Board
         self.turn_counter = 0
+        self.current_player = self.player
         self.player_turn = True
         self.game_log = []
         self.game_over = False
@@ -45,14 +46,8 @@ class Game:
         
         while not self.game_over:
             self.turn_counter += 1
-            current_player = self.player if self.player_turn else self.opponent
-            self.log_action(f"{current_player.name}'s Turn {self.turn_counter} started.")
-            self.turn_flow(current_player)
-            self.log_action(f"{current_player.name} ended their turn.")
-            
-            if self.game_over:
-                break
-            
+            self.turn_flow(self.current_player)
+            self.current_player = self.opponent if self.current_player == self.player else self.player
             self.player_turn = not self.player_turn
             
             # Add a small delay and prompt between turns
@@ -110,7 +105,12 @@ class Game:
         else:
             # AI player turn
             print("DEBUG: Starting opponent turn structure")
-            opponent_turn_structure(self)
+            try:
+                opponent_turn_structure(self)
+            except Exception as e:
+                error_message = f"ERROR: An exception occurred during the opponent's turn: {str(e)}"
+                self.log_action(error_message, Fore.RED)
+                print(error_message)
             self.update_display()
 
     # Remove this line as it's already handled in the start method
@@ -193,16 +193,28 @@ class Game:
         return any(card.equipment for card in player.battlezone)
 
     def play_card_from_hand(self):
-        print("\nSelect a card to play:")
-        card_index = int(input("Enter the index of the card to play: ")) - 1
-        if 0 <= card_index < len(self.player.hand):
-            card = self.player.hand[card_index]
-            if self.board.play_card(card, player=True):
-                print(f"Played {card.name} successfully.")
-            else:
-                print("Failed to play the card.")
-        else:
-            print("Invalid card index.")
+        while True:
+            print("\n0. Back to main phase")
+            choice = input("Enter the index of the card to play (or 0 to go back): ").strip()
+
+            if choice == '0':
+                print("Returning to main phase.")
+                return
+
+            if not choice:
+                print("Invalid input. Please enter a number.")
+                continue
+
+            try:
+                card_index = int(choice) - 1
+                if 0 <= card_index < len(self.player.hand):
+                    card = self.player.hand[card_index]
+                    if self.player.play_card(card):
+                        return
+                else:
+                    print("Invalid card index. Please try again.")
+            except ValueError:
+                print("Invalid input. Please enter a number.")
 
     def equip_card(self):
         print("\nSelect an equipment card to equip:")
@@ -236,14 +248,13 @@ class Game:
 
         creature = creature_cards[creature_index]
 
-        if hasattr(creature, 'equipment') and creature.equipment:
-            print(f"{creature.name} already has equipment. Unequip first.")
-            return
-
         self.player.energy -= equip_cost
-        creature.equipment = equipment
-        equipment.equipped_to = creature
-        print(f"Equipment {equipment.name} successfully equipped to {creature.name} for {equip_cost} energy.")
+        if equipment.equip(creature):
+            self.log_action(f"{equipment.name} successfully equipped to {creature.name} for {equip_cost} energy.")
+            self.log_action(f"{creature.name}'s attack is now {creature.attack}")
+        else:
+            print("Failed to equip the card.")
+            self.player.energy += equip_cost
 
     def unequip_card(self):
         print("\nSelect a creature to unequip:")
@@ -534,26 +545,52 @@ class Game:
     from display import display_card_info, display_cards_in_play
 
     def show_card_info(self):
-        print("\nCards in Play:")
-        print("1. Player's cards")
-        print("2. Opponent's cards")
-        print("3. Back to main menu")
+        print("\nSelect card source:")
+        print("1. Player's hand")
+        print("2. Player's cards in play")
+        print("3. Opponent's cards in play")
+        print("4. Back to main menu")
         
-        choice = input("Enter your choice (1-3): ")
+        choice = input("Enter your choice (1-4): ")
         if choice == '1':
+            self.display_hand(self.player)
+            cards_to_show = self.select_cards_from_hand(self.player)
+            if cards_to_show:
+                display_card_info(cards_to_show)
+        elif choice == '2':
             display_cards_in_play(self.player)
             cards_to_show = self.select_cards(self.player)
             if cards_to_show:
                 display_card_info(cards_to_show)
-        elif choice == '2':
+        elif choice == '3':
             display_cards_in_play(self.opponent)
             cards_to_show = self.select_cards(self.opponent)
             if cards_to_show:
                 display_card_info(cards_to_show)
-        elif choice == '3':
+        elif choice == '4':
             return
         else:
             print("Invalid choice. Please try again.")
+
+    def select_cards_from_hand(self, player):
+        if not player.hand:
+            print(f"No cards in {player.name}'s hand.")
+            return None
+        
+        while True:
+            choice = input(f"Enter the number of the card you want to see (1-{len(player.hand)}) or 'all' to see all cards, or 'back' to return: ")
+            if choice.lower() == 'back':
+                return None
+            elif choice.lower() == 'all':
+                return player.hand
+            try:
+                index = int(choice) - 1
+                if 0 <= index < len(player.hand):
+                    return [player.hand[index]]
+                else:
+                    print("Invalid card number. Please try again.")
+            except ValueError:
+                print("Invalid input. Please enter a number, 'all', or 'back'.")
 
     def select_cards(self, player):
         all_cards = player.battlezone + player.environs

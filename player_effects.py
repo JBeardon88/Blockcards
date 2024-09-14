@@ -65,22 +65,32 @@ class Player:
     def recalculate_energy_regen(self):
         self.energy_regen = self.base_energy_regen + sum(effect['value'] for effect in self.energy_regen_effects)
 
-    def play_card(self, card_index):
-        if 0 <= card_index < len(self.hand):
-            card = self.hand[card_index]
-            adjusted_cost = card.cost
-            if card.card_type == "equipment":
-                adjusted_cost = max(0, card.cost - self.calculate_equipment_cost_reduction())
-            if self.energy >= adjusted_cost:
-                self.energy -= adjusted_cost
-                self.hand.pop(card_index)
-                self.sort_card_to_zone(card)
-                for effect in card.effects:
-                    effect_instance = Effect(effect['type'], effect['value'], effect['trigger'], card.id)
-                    effect_instance.apply(self.game, self)
-                print(f"DEBUG: Played card {card.name} with ID {card.id}")
-                return card
-        return None
+    def play_card(self, card):
+        if isinstance(card, Card):  # Check if card is a Card object
+            if self.energy >= card.cost:
+                self.energy -= card.cost
+                self.hand.remove(card)
+                
+                if card.card_type == "creature":
+                    self.battlezone.append(card)
+                    card.summoning_sickness = True
+                    card.tapped = True  # Set tapped to True when played
+                    self.game.log_action(f"{self.name} played {card.name} to the battlezone.")
+                elif card.card_type in ["environ", "enchantment", "equipment"]:
+                    self.environs.append(card)
+                    self.game.log_action(f"{self.name} played {card.name} to the environs.")
+                elif card.card_type == "spell":
+                    self.game.log_action(f"{self.name} cast {card.name}.")
+                    # Spell effects will be handled separately
+                
+                card.apply_effects(self.game, self)
+                return True
+            else:
+                print(f"Not enough energy to play {card.name}. It costs {card.cost}, but you only have {self.energy} energy.")
+                return False
+        else:
+            print("Error: Invalid card object passed to play_card method.")
+            return False
 
     def sort_card_to_zone(self, card):
         if card.card_type == "creature":
@@ -135,8 +145,11 @@ class Player:
             equipment = self.environs[equipment_index]
             target = self.battlezone[target_index]
             if equipment.card_type == "equipment" and target.card_type == "creature":
-                target.equip(equipment)
+                if target.equipment:
+                    self.unequip_card(target_index)
+                equipment.equip(target)
                 self.game.log_action(f"{self.name} equipped {equipment.name} to {target.name}")
+                self.game.log_action(f"{target.name}'s attack is now {target.attack}")
                 return True
         return False
 
@@ -147,6 +160,7 @@ class Player:
                 equipment = creature.equipment
                 equipment.unequip()
                 self.game.log_action(f"{self.name} unequipped {equipment.name} from {creature.name}")
+                self.game.log_action(f"{creature.name}'s attack is now {creature.attack}")
                 return True
         return False
 
@@ -209,7 +223,15 @@ class Effect:
 
     def destroy_enchantment(self, game: 'Game', player: 'Player'):
         target = game.select_target(card_type="enchantment", effect_description="Select an enchantment to destroy:", player=player)
-        self.handle_destruction(game, player, target, "enchantment")
+        if target:
+            if target in target.owner.environs:
+                target.owner.environs.remove(target)
+                target.owner.graveyard.append(target)
+                game.log_action(f"{player.name} destroyed enchantment {target.name} (ID: {target.id}) owned by {target.owner.name}")
+            else:
+                game.log_action(f"Failed to destroy {target.name}: not found in environs.")
+        else:
+            game.log_action(f"{player.name} tried to destroy an enchantment but no valid target was found.")
 
     def handle_destruction(self, game: 'Game', player: 'Player', target, card_type: str):
         if target:

@@ -1,6 +1,6 @@
 import random
 from colorama import Fore, Style
-from combat import declare_attackers, ai_declare_blockers, resolve_combat, cleanup_phase, declare_blockers
+from combat import declare_attackers, ai_declare_blockers, resolve_combat_phase, cleanup_phase, declare_blockers
 
 def ai_upkeep(game):
     game.opponent.energy += 1
@@ -44,7 +44,7 @@ def ai_combat_phase(game):
         blockers = declare_blockers(game, game.player, attackers)
         
         # Resolve combat
-        resolve_combat(game, game.opponent, game.player, attackers, blockers)
+        resolve_combat_phase(game, attackers, blockers)
     else:
         game.log_action("AI doesn't declare any attackers", Fore.YELLOW)
     

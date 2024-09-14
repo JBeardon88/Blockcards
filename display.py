@@ -151,26 +151,26 @@ def display_card_info(cards):
     input("\nPress Enter to continue...")
 
 def display_cards_in_play(player, card_type=None, show_equipment=False):
-    print(f"\n{player.name}'s Cards in Play:")
-    all_cards = player.battlezone + player.environs
-    filtered_cards = [card for card in all_cards if card_type is None or card.card_type == card_type]
+    cards = player.battlezone + player.environs
+    if card_type:
+        cards = [card for card in cards if card.card_type == card_type]
     
-    if not filtered_cards:
-        print(f"No {card_type} cards in play.")
+    if not cards:
+        print(f"No {'cards' if not card_type else card_type + ' cards'} in play.")
         return []
 
-    for i, card in enumerate(filtered_cards, 1):
-        equipment_info = ""
-        if show_equipment and card.card_type == "creature":
-            if hasattr(card, 'equipment') and card.equipment:
-                equipment_info = f" EQ: {card.equipment.id[:4]}"
-            else:
-                equipment_info = " EQ: None"
+    print(f"\n{player.name}'s cards in play:")
+    for i, card in enumerate(cards, 1):
+        color = Fore.BLUE if card.card_type == "equipment" else Fore.WHITE
+        equipped_to = card.equipped_to.name if hasattr(card, 'equipped_to') and card.equipped_to else "None"
+        equip_info = f"On: {equipped_to[:15]}" if card.card_type == "equipment" else ""
         
-        print(f"{i}: {card.name}")
-        print(f"Type: {card.card_type[:3]} Cost: {card.cost}")
-        print(f"ATK/DEF: {card.attack}/{card.defense}{equipment_info}")
-        print(f"ID: {card.id}")
-        print()  # Empty line for spacing between cards
+        print(f"{color}{i}: {card.name}{Style.RESET_ALL}")
+        print(f"{color}   Type: {card.card_type} Cost: {card.cost}{Style.RESET_ALL}")
+        print(f"{color}   A/D: {card.attack}/{card.defense} | ID: {card.id[:8]}{Style.RESET_ALL}")
+        if equip_info:
+            print(f"{color}   {equip_info}{Style.RESET_ALL}")
+        print(f"{color}   {card.description[:50]}{'...' if len(card.description) > 50 else ''}{Style.RESET_ALL}")
+        print()  # Add a blank line between cards
 
-    return filtered_cards
+    return cards

@@ -1,46 +1,61 @@
-from display import display_game_state
+from display import display_game_state, display_graveyard, display_card_info, display_cards_in_play
 from colorama import Fore, Back, Style
+from utils import check_and_destroy
+
+
 
 def combat_phase(game):
-    print("\nCombat Phase:")
-    attacking_player = game.player if game.player_turn else game.opponent
-    defending_player = game.opponent if game.player_turn else game.player
-    board = game.board
-
-    # 1. Declare attackers
-    attackers = declare_attackers(game, attacking_player)
-    if not attackers:
-        game.log_action("No attackers declared.", Fore.BLUE)
+    game.log_action(f"{game.current_player.name}'s Combat Phase")
+    available_attackers = [card for card in game.current_player.battlezone if not card.tapped and not card.summoning_sickness]
+    
+    if not available_attackers:
+        game.log_action("No available attackers.")
         return
-    game.update_display()
 
-    # 2. Declare blockers
-    if defending_player == game.opponent:
-        blockers = ai_declare_blockers(game, defending_player, attackers)
-    else:
-        blockers = declare_blockers(game, defending_player, attackers)
-    game.update_display()
+    while True:
+        print("\nCombat Phase Options:")
+        print("1. Declare attackers")
+        print("2. Pass")
+        print("3. View game log")
+        print("4. View graveyard")
+        print("5. View card info")
+        
+        choice = input("Enter your choice (1-5): ")
+        
+        if choice == '1':
+            display_cards_in_play(game.current_player, card_type="creature")
+            attackers = declare_attackers(game, game.current_player)
+            if attackers:
+                defending_player = game.player if game.current_player == game.opponent else game.opponent
+                if game.current_player == game.player:
+                    blockers = declare_blockers(game, defending_player, attackers)
+                else:
+                    blockers = ai_declare_blockers(game, defending_player, attackers)
+                resolve_combat_phase(game, attackers, blockers)
+            break
+        elif choice == '2':
+            game.log_action("Player passed combat phase.")
+            break
+        elif choice == '3':
+            display_game_log(game)
+        elif choice == '4':
+            display_graveyard(game)
+        elif choice == '5':
+            display_card_info(game)
+        else:
+            print("Invalid choice. Please try again.")
 
-    # 3. Resolve combat
-    resolve_combat(game, attacking_player, defending_player, attackers, blockers)
-    game.update_display()
-
-    # 4. Clean up phase
-    cleanup_phase(game, attacking_player, defending_player)
-    game.update_display()
-
-    game.log_action("Combat phase ended.", Fore.BLUE)
-    if game.player_turn:
-        input("Press Enter to continue...")
+    game.log_action("Combat phase ended.")
 
 def declare_attackers(game, attacking_player):
-    available_attackers = [creature for creature in attacking_player.battlezone if not creature.tapped]
+    available_attackers = [creature for creature in attacking_player.battlezone if creature.can_attack()]
     if not available_attackers:
+        print("No available attackers.")
         return []
 
     print("Available attackers:")
-    for i, creature in enumerate(available_attackers):
-        print(f"{i+1}. {creature.name} (ATK: {creature.attack}, DEF: {creature.defense})")
+    for i, creature in enumerate(available_attackers, 1):
+        print(f"{i}. {creature.name} (ATK: {creature.attack}, DEF: {creature.defense})")
 
     while True:
         attacker_input = input("Enter the indices of attacking creatures (comma-separated) or 'pass': ").strip().lower()
@@ -85,6 +100,13 @@ def declare_blockers(game, defending_player, attackers):
                         blockers[i] = available_blockers[blocker_index]
                     else:
                         print(f"Invalid blocker index: {index}. Ignoring this blocker.")
+            
+            for i, (attacker, blocker) in enumerate(zip(attackers, blockers)):
+                if blocker:
+                    game.log_action(f"{blocker.name} blocks {attacker.name}")
+                else:
+                    game.log_action(f"{attacker.name} is unblocked")
+            
             return blockers
         except ValueError:
             print("Invalid input. Please enter comma-separated numbers, 'x', or 'pass'.")
@@ -93,19 +115,17 @@ def declare_blockers(game, defending_player, attackers):
 
 def ai_declare_blockers(game, defending_player, attackers):
     available_blockers = [creature for creature in defending_player.battlezone if not creature.tapped]
-    blockers = []
+    blockers = [None] * len(attackers)
     
-    print("AI is declaring blockers...")
-    for attacker in attackers:
-        potential_blockers = [b for b in available_blockers if b.defense > attacker.attack]
+    for i, attacker in enumerate(attackers):
+        potential_blockers = [b for b in available_blockers if b.defense >= attacker.attack]
         if potential_blockers:
             blocker = max(potential_blockers, key=lambda x: x.attack)
-            blockers.append(blocker)
+            blockers[i] = blocker
             available_blockers.remove(blocker)
-            game.log_action(f"AI blocks {attacker.name} with {blocker.name}")
+            game.log_action(f"{blocker.name} blocks {attacker.name}")
         else:
-            blockers.append(None)
-            game.log_action(f"AI doesn't block {attacker.name}")
+            game.log_action(f"{attacker.name} is unblocked")
     
     return blockers
 
@@ -117,37 +137,50 @@ def assign_blockers(game, blockers, attackers):
             assignments[attacker] = blocker
     return assignments
 
-def resolve_combat(game, attacking_player, defending_player, attackers, blockers):
-    for i, attacker in enumerate(attackers):
-        if i < len(blockers) and blockers[i]:
-            blocker = blockers[i]
-            game.log_action(f"{attacker.name} is blocked by {blocker.name}.")
-            
-            # Creatures deal damage to each other
-            attacker.defense -= blocker.attack
-            blocker.defense -= attacker.attack
-            
-            game.log_action(f"{attacker.name} deals {attacker.attack} damage to {blocker.name}.")
-            game.log_action(f"{blocker.name} deals {blocker.attack} damage to {attacker.name}.")
-            
-            # Check if creatures are destroyed
-            if attacker.defense <= 0:
-                game.log_action(f"{attacker.name} (ID: {attacker.id}) is destroyed.")
-                attacking_player.battlezone.remove(attacker)
-                attacking_player.graveyard.append(attacker)
-            if blocker.defense <= 0:
-                game.log_action(f"{blocker.name} (ID: {blocker.id}) is destroyed.")
-                defending_player.battlezone.remove(blocker)
-                defending_player.graveyard.append(blocker)
-        else:
-            # Unblocked creature deals damage to the defending player
-            damage = attacker.attack
-            defending_player.life -= damage
-            game.log_action(f"{attacker.name} deals {damage} damage to {defending_player.name}.")
+def resolve_combat_phase(game, attackers, blockers):
+    for attacker, blocker in zip(attackers, blockers):
+        resolve_combat(game, attacker, blocker)
+
+def resolve_combat(game, attacker, defender):
+    attacker_damage = attacker.attack
+    defender_damage = defender.attack if defender else 0
     
-    if defending_player.life <= 0:
-        game.game_over = True
-        game.log_action(f"{defending_player.name}'s life reached 0. {attacking_player.name} wins!")
+    attacking_player = game.opponent if attacker in game.opponent.battlezone else game.player
+    defending_player = game.player if attacking_player == game.opponent else game.opponent
+
+    if defender:
+        attacker.defense -= defender_damage
+        defender.defense -= attacker_damage
+        
+        game.log_action(f"{attacker.name} deals {attacker_damage} damage to {defender.name}.")
+        game.log_action(f"{defender.name} deals {defender_damage} damage to {attacker.name}.")
+        
+        if attacker.defense <= 0:
+            game.log_action(f"{attacker.name} (ID: {attacker.id}) was destroyed in combat.")
+            destroy_creature(game, attacker)
+        if defender.defense <= 0:
+            game.log_action(f"{defender.name} (ID: {defender.id}) was destroyed in combat.")
+            destroy_creature(game, defender)
+    else:
+        game.log_action(f"{attacker.name} attacks directly.")
+        defending_player.life -= attacker_damage
+        game.log_action(f"{defending_player.name} takes {attacker_damage} damage.")
+
+    return attacker.defense <= 0, defender.defense <= 0 if defender else False
+
+
+def destroy_creature(game, creature):
+    owner = game.player if creature in game.player.battlezone else game.opponent
+    if creature in owner.battlezone:
+        if creature.equipment:
+            equipment_name = creature.equipment.name
+            creature.equipment.unequip()
+            game.log_action(f"{equipment_name} was unequipped from {creature.name}")
+        owner.battlezone.remove(creature)
+        owner.graveyard.append(creature)
+        game.log_action(f"{creature.name} (ID: {creature.id}) was destroyed and moved to {owner.name}'s graveyard.")
+    else:
+        game.log_action(f"Failed to destroy {creature.name}: not found in battlezone.")
 
 def cleanup_phase(game, attacking_player, defending_player):
     for player in [attacking_player, defending_player]:
@@ -160,3 +193,9 @@ def cleanup_phase(game, attacking_player, defending_player):
     if defending_player.life <= 0:
         game.game_over = True
         game.log_action(f"{defending_player.name}'s life reached 0. {attacking_player.name} wins!")
+
+def display_game_log(game):
+    print("\n=== Game Log ===")
+    for log_entry in game.log[-20:]:  # Display the last 20 log entries
+        print(log_entry)
+    print("================\n")

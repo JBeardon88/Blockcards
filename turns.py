@@ -31,10 +31,10 @@ def upkeep_phase(board, player=True):
 
     drawn_card = current_player.draw_card()
     for card in current_player.battlezone:
-        card.untap()
-        card.remove_summoning_sickness()
+        card.tapped = False
+        card.summoning_sickness = False  # Remove summoning sickness
 
-    log_entry = f"{current_player.name}'s Upkeep: Energy increased from {initial_energy} to {current_player.energy} (gained {energy_gained}). All creatures untapped. "
+    log_entry = f"{current_player.name}'s Upkeep: Energy increased from {initial_energy} to {current_player.energy} (gained {energy_gained}). All creatures untapped and summoning sickness removed. "
     if drawn_card:
         log_entry += f"Drew Card: {drawn_card.name} (Attack: {drawn_card.attack}, Defense: {drawn_card.defense}, Cost: {drawn_card.cost})"
     print(f"DEBUG: {current_player.name}'s Upkeep Phase - Final Energy: {current_player.energy}, Hand: {[card.name for card in current_player.hand]}")
