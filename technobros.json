@@ -132,16 +132,16 @@
         ]
     },
     {
-        "name": "EMP Grenade",
+        "name": "Nightmare Gun",
         "attack": 0,
         "defense": 0,
         "cost": 3,
-        "description": "Equip to an enemy creature. Tap that Creature. Creature does not untap.",
+        "description": "When Nightmare Gun is equipped to a creature, deal 1 damage to any target during upkeep.",
         "card_type": "equipment",
         "effects": [
-            {"type": "tap_creature", "target": "enemy_creature"},
-            {"type": "prevent_untap", "target": "enemy_creature"}
-        ]
+            {"type": "deal_damage", "value": 1, "target": "creature", "trigger": "upkeep"}
+        ],
+        "flavor_text": "It's not a gun, it's a weapon of mass destruction."
     },
     {
         "name": "Nanotech Armor",
@@ -221,7 +221,8 @@
         "effects": [
             {
                 "type": "destroy_equipment",
-                "trigger": "on_cast"
+                "trigger": "on_cast",
+                "target": "equipment"
             }
         ],
         "flavor_text": "A powerful electromagnetic pulse that disables all electronic devices."
@@ -236,7 +237,8 @@
         "effects": [
             {
                 "type": "destroy_enchantment",
-                "trigger": "on_cast"
+                "trigger": "on_cast",
+                "target": "enchantment"
             }
         ],
         "flavor_text": "Delete their code, delete their reality."

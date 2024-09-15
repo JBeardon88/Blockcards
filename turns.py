@@ -1,9 +1,9 @@
 # card_game/turns.py
 from colorama import Fore, Back, Style
-from player_effects import Effect, gain_energy
+from effects import Effect
+from player import gain_energy
 from ai import ai_main_phase, ai_combat_phase, ai_end_phase
-
-
+from utils import check_and_destroy
 
 def upkeep_phase(board, player=True):
     current_player = board.player if player else board.opponent
@@ -14,15 +14,34 @@ def upkeep_phase(board, player=True):
     # First, apply the natural energy gain
     current_player.increase_energy()
 
+    # Keep track of triggered effects
+    triggered_effects = set()
+
     # Then, apply effects
     for card in current_player.battlezone + current_player.environs:
         for effect in card.effects:
             if 'trigger' not in effect:
                 print(f"DEBUG: Effect missing 'trigger' key in card {card.name} (ID: {card.id})")
                 continue
-            if effect['trigger'] == 'upkeep' and effect['type'] == 'increase_energy_regen':
-                effect_instance = Effect(effect['type'], effect['value'], effect['trigger'], card.id)
-                effect_instance.apply(board.game, current_player)
+            if effect['trigger'] == 'upkeep':
+                if card.card_type == "equipment":
+                    if not card.equipped_to:
+                        continue  # Skip effects for unequipped equipment
+                effect_key = (card.id, effect['type'])
+                if effect_key in triggered_effects:
+                    continue  # Skip if this effect has already been triggered this turn
+                triggered_effects.add(effect_key)
+                
+                if effect['type'] == 'increase_energy_regen':
+                    effect_instance = Effect(effect['type'], effect['value'], effect['trigger'], card.id)
+                    effect_instance.apply(board.game, current_player)
+                elif effect['type'] == 'deal_damage':
+                    target = board.game.select_target(card_type="creature", effect_description=f"{card.name} can deal {effect['value']} damage to any target creature:", player=current_player)
+                    if target:
+                        target.receive_damage(effect['value'])
+                        board.game.log_action(f"{card.name} dealt {effect['value']} damage to {target.name} (ID: {target.id})")
+                        check_and_destroy(board, target)
+
 
     # Apply the energy regeneration effects
     current_player.apply_energy_regen_effects()
@@ -39,6 +58,8 @@ def upkeep_phase(board, player=True):
         log_entry += f"Drew Card: {drawn_card.name} (Attack: {drawn_card.attack}, Defense: {drawn_card.defense}, Cost: {drawn_card.cost})"
     print(f"DEBUG: {current_player.name}'s Upkeep Phase - Final Energy: {current_player.energy}, Hand: {[card.name for card in current_player.hand]}")
     return log_entry, Fore.YELLOW
+
+
 
 
 def end_phase(game, player=True):

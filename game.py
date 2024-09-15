@@ -7,9 +7,10 @@ from card import Card
 import json
 from colorama import Fore, Back, Style
 from ai import ai_make_decisions, ai_upkeep, ai_main_phase, ai_combat_phase, ai_end_phase, ai_can_play_card
-from player_effects import Player, Effect, Trigger
 import textwrap
 from combat import combat_phase as execute_combat_phase
+from effects import Effect, Trigger
+from player import Player
 
 class Game:
     def __init__(self, player_name, opponent_name):
@@ -479,32 +480,39 @@ class Game:
         return cards
 
     def select_target(self, card_type=None, effect_description=None, player=None):
-        if effect_description:
-            print(f"\n{effect_description}")
+        print(f"DEBUG: Selecting target for {effect_description}")
+        valid_targets = []
+        if card_type == "creature_or_player":
+            valid_targets = [card for card in self.board.get_all_cards() if card.card_type in ["creature", "player"]]
+        elif card_type == "enchantment":
+            valid_targets = [card for card in self.board.get_all_cards() if card.card_type == "enchantment"]
+        elif card_type == "equipment":
+            valid_targets = [card for card in self.board.get_all_cards() if card.card_type == "equipment"]
+        # Add other card type checks here
 
-        legal_targets = self.get_legal_targets(card_type, player)
-
-        if not legal_targets:
-            print("No legal targets found.")
+        if not valid_targets:
+            print(f"DEBUG: No valid targets found for {card_type}")
             return None
 
         print("Legal targets:")
-        for i, target in enumerate(legal_targets, 1):
+        for i, target in enumerate(valid_targets, 1):
             if isinstance(target, Player):
                 print(f"{i}. {target.name} (Player)")
             else:
                 owner = "Your" if target in player.battlezone + player.environs else "Opponent's"
                 print(f"{i}. {owner} {target.name} (ID: {target.id[:8]})")
-        print(f"{len(legal_targets) + 1}. Enter custom card ID")
-        print(f"{len(legal_targets) + 2}. Cancel")
+        print(f"{len(valid_targets) + 1}. Enter custom card ID")
+        print(f"{len(valid_targets) + 2}. Cancel")
 
         while True:
-            choice = input(f"Enter your choice (1-{len(legal_targets) + 2}): ").strip()
+            choice = input(f"Enter your choice (1-{len(valid_targets) + 2}): ").strip()
             if choice.isdigit():
                 choice = int(choice)
-                if 1 <= choice <= len(legal_targets):
-                    return legal_targets[choice - 1]
-                elif choice == len(legal_targets) + 1:
+                if 1 <= choice <= len(valid_targets):
+                    selected_target = valid_targets[choice - 1]
+                    print(f"DEBUG: Selected target: {selected_target.name} (ID: {selected_target.id})")
+                    return selected_target
+                elif choice == len(valid_targets) + 1:
                     id_prefix = input("Enter the first four digits of the target card ID: ").strip().lower()
                     custom_targets = self.find_cards_by_id_prefix(id_prefix)
                     custom_targets = [card for card in custom_targets if self.is_legal_target(card, card_type)]
@@ -512,7 +520,7 @@ class Game:
                         return custom_targets[0]
                     else:
                         print(f"No valid {card_type if card_type else 'card'} found with that ID.")
-                elif choice == len(legal_targets) + 2:
+                elif choice == len(valid_targets) + 2:
                     return None
             print("Invalid choice. Please try again.")
 

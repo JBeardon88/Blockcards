@@ -2,7 +2,7 @@
 import random
 from colorama import Fore, Back, Style, init
 from card import Card
-from player_effects import Effect
+from effects import Effect
 
 init(autoreset=True)
 

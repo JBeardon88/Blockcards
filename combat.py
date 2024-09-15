@@ -155,12 +155,8 @@ def resolve_combat(game, attacker, defender):
         game.log_action(f"{attacker.name} deals {attacker_damage} damage to {defender.name}.")
         game.log_action(f"{defender.name} deals {defender_damage} damage to {attacker.name}.")
         
-        if attacker.defense <= 0:
-            game.log_action(f"{attacker.name} (ID: {attacker.id}) was destroyed in combat.")
-            destroy_creature(game, attacker)
-        if defender.defense <= 0:
-            game.log_action(f"{defender.name} (ID: {defender.id}) was destroyed in combat.")
-            destroy_creature(game, defender)
+        check_and_destroy(game.board, attacker)
+        check_and_destroy(game.board, defender)
     else:
         game.log_action(f"{attacker.name} attacks directly.")
         defending_player.life -= attacker_damage
@@ -169,26 +165,10 @@ def resolve_combat(game, attacker, defender):
     return attacker.defense <= 0, defender.defense <= 0 if defender else False
 
 
-def destroy_creature(game, creature):
-    owner = game.player if creature in game.player.battlezone else game.opponent
-    if creature in owner.battlezone:
-        if creature.equipment:
-            equipment_name = creature.equipment.name
-            creature.equipment.unequip()
-            game.log_action(f"{equipment_name} was unequipped from {creature.name}")
-        owner.battlezone.remove(creature)
-        owner.graveyard.append(creature)
-        game.log_action(f"{creature.name} (ID: {creature.id}) was destroyed and moved to {owner.name}'s graveyard.")
-    else:
-        game.log_action(f"Failed to destroy {creature.name}: not found in battlezone.")
-
 def cleanup_phase(game, attacking_player, defending_player):
     for player in [attacking_player, defending_player]:
         for creature in player.battlezone[:]:
-            if creature.defense <= 0:
-                player.battlezone.remove(creature)
-                player.graveyard.append(creature)
-                game.log_action(f"{creature.name} (ID: {creature.id}) was destroyed and moved to {player.name}'s graveyard.")
+            check_and_destroy(game.board, creature)
 
     if defending_player.life <= 0:
         game.game_over = True
