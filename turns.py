@@ -5,8 +5,12 @@ from player import gain_energy
 from ai import ai_main_phase, ai_combat_phase, ai_end_phase
 from utils import check_and_destroy
 
+
 def upkeep_phase(board, player=True):
     current_player = board.player if player else board.opponent
+    
+    print(f"\nDEBUG: ===== STARTING UPKEEP PHASE FOR {current_player.name} =====")
+    
     initial_energy = current_player.energy
 
     print(f"DEBUG: {current_player.name}'s Upkeep Phase - Initial Energy: {initial_energy}, Hand: {[card.name for card in current_player.hand]}")
@@ -14,19 +18,31 @@ def upkeep_phase(board, player=True):
     # First, apply the natural energy gain
     current_player.increase_energy()
 
+    # Reset the effect_processed flag for all cards
+    for card in current_player.battlezone + current_player.environs:
+        card.reset_effect_processed()
+
     # Keep track of triggered effects
     triggered_effects = set()
 
+    processed_effects = set()
+
     # Then, apply effects
     for card in current_player.battlezone + current_player.environs:
+        print(f"DEBUG: Processing effects for {card.name} (ID: {card.id})")
         for effect in card.effects:
+            effect_key = (card.id, effect['type'], effect.get('source_id'))
+            if effect_key in processed_effects:
+                print(f"DEBUG: Skipping already processed effect: {effect}")
+                continue
+            processed_effects.add(effect_key)
+            print(f"DEBUG: Effect: {effect}")
             if 'trigger' not in effect:
                 print(f"DEBUG: Effect missing 'trigger' key in card {card.name} (ID: {card.id})")
                 continue
             if effect['trigger'] == 'upkeep':
-                if card.card_type == "equipment":
-                    if not card.equipped_to:
-                        continue  # Skip effects for unequipped equipment
+                if card.card_type == "equipment" and not card.equipped_to:
+                    continue  # Skip effects for unequipped equipment
                 effect_key = (card.id, effect['type'])
                 if effect_key in triggered_effects:
                     print(f"DEBUG: Skipping duplicate effect for {card.name} (ID: {card.id})")
@@ -39,12 +55,12 @@ def upkeep_phase(board, player=True):
                     effect_instance = Effect(effect['type'], effect['value'], effect['trigger'], card.id)
                     effect_instance.apply(board.game, current_player)
                 elif effect['type'] == 'deal_damage':
+                    print(f"DEBUG: Triggering upkeep deal_damage effect for {card.name} (ID: {card.id})")
                     target = board.game.select_target(card_type="creature", effect_description=f"{card.name} can deal {effect['value']} damage to any target creature:", player=current_player)
                     if target:
                         target.receive_damage(effect['value'])
                         board.game.log_action(f"{card.name} dealt {effect['value']} damage to {target.name} (ID: {target.id})")
-                        check_and_destroy(board, target)
-
+                        check_and_destroy(board, target)  # Changed to use board instead of board.game
 
     # Apply the energy regeneration effects
     current_player.apply_energy_regen_effects()
@@ -60,6 +76,9 @@ def upkeep_phase(board, player=True):
     if drawn_card:
         log_entry += f"Drew Card: {drawn_card.name} (Attack: {drawn_card.attack}, Defense: {drawn_card.defense}, Cost: {drawn_card.cost})"
     print(f"DEBUG: {current_player.name}'s Upkeep Phase - Final Energy: {current_player.energy}, Hand: {[card.name for card in current_player.hand]}")
+    
+    print(f"DEBUG: ===== ENDING UPKEEP PHASE FOR {current_player.name} =====\n")
+    
     return log_entry, Fore.YELLOW
 
 

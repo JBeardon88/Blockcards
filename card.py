@@ -20,6 +20,10 @@ class Card:
         self.owner = owner
         self.equipped_to = None  # Track which creature this equipment is attached to
         self.equipment = None  # Track what equipment is attached to this creature
+        self.effect_processed = False  # Track if the effect has been processed
+
+    def reset_effect_processed(self):
+        self.effect_processed = False
 
     def __str__(self):
         return f"{self.name} (Type: {self.card_type}, Cost: {self.cost}, ATK/DEF: {self.attack}/{self.defense}, Flavor Text: {self.flavor_text}, ID: {self.id})"
@@ -93,8 +97,18 @@ class Card:
         return False
 
     def apply_effects(self, game, player):
+        if self.effect_processed:
+            print(f"DEBUG: Skipping already processed effects for {self.name} (ID: {self.id})")
+            return
+        self.effect_processed = True  # Set the flag to indicate that the effect has been processed
+        processed_effects = set()  # Add this line at the beginning of the function
         for effect in self.effects:
-            print(f"DEBUG: Processing effect for {self.name}: {effect}")
+            effect_key = (self.id, effect['type'], effect.get('source_id'))
+            if effect_key in processed_effects:
+                print(f"DEBUG: Skipping already processed effect: {effect}")
+                continue
+            processed_effects.add(effect_key)
+            print(f"DEBUG: Processing effect for {self.name} (ID: {self.id}): {effect}")
             if 'trigger' in effect:
                 if effect['trigger'] == 'constant':
                     if effect['type'] == 'equipment_cost_reduction':
@@ -105,7 +119,10 @@ class Card:
                 elif effect['trigger'] == 'upkeep':
                     if self.card_type == "equipment" and not self.equipped_to:
                         continue  # Skip effects if the equipment is not equipped
+                    if self.card_type == "equipment" and effect['type'] == 'deal_damage':
+                        continue  # Skip this, it's handled in game.py now
                     if effect['type'] == 'deal_damage':
+                        print(f"DEBUG: Triggering upkeep deal_damage effect for {self.name} (ID: {self.id})")
                         target = game.select_target(card_type="creature", effect_description=f"{self.name} can deal {effect['value']} damage to any target creature:", player=player)
                         if target:
                             target.receive_damage(effect['value'])
@@ -132,7 +149,7 @@ class Card:
                             target.destroy(game)
                             game.log_action(f"{self.name} destroyed {target.name} (ID: {target.id})")
                     elif effect['type'] == 'deal_damage':
-                        print(f"DEBUG: Triggering on_cast deal_damage effect: {effect}")
+                        print(f"DEBUG: Triggering on_cast deal_damage effect for {self.name} (ID: {self.id})")
                         target = game.select_target(card_type="creature_or_player", effect_description=f"{self.name} can deal {effect['value']} damage to any target:", player=player)
                         if target:
                             if isinstance(target, Player):
@@ -171,38 +188,57 @@ class Card:
         return self.cost
 
     def equip(self, target):
-        if self.card_type == "equipment" and target.card_type == "creature":
-            self.equipped_to = target
-            target.equipment = self
-            self.apply_equipment_effects(target)
-            return True
-        return False
+        if self.card_type != "equipment":
+            return False
+        if target.equipment:
+            target.equipment.unequip()
+        self.equipped_to = target
+        target.equipment = self
+        
+        # Apply equipment effects
+        for effect in self.effects:
+            if effect['type'] == 'gain_attack':
+                target.attack += effect['value']
+            elif effect['type'] == 'gain_defense':
+                target.defense += effect['value']
+            elif effect['type'] == 'deal_damage' and effect['trigger'] == 'upkeep':
+                # Remove any existing upkeep damage effects from the target
+                target.effects = [e for e in target.effects if e.get('source_id') != self.id]
+                # Add the new effect to the target
+                target.effects.append({
+                    "type": "deal_damage",
+                    "value": effect['value'],
+                    "trigger": "upkeep",
+                    "source_id": self.id,
+                    "source_name": self.name
+                })
+        
+        # Remove upkeep effects from the equipment itself
+        self.effects = [e for e in self.effects if e.get('trigger') != 'upkeep']
+        
+        return True
 
     def unequip(self):
         if self.equipped_to:
             print(f"DEBUG: Unequipping {self.name} from {self.equipped_to.name}")
+            self.remove_equipment_effects(self.equipped_to)
             self.equipped_to.equipment = None
             self.equipped_to = None
-            self.owner.environs.append(self)
+            if self not in self.owner.environs:
+                self.owner.environs.append(self)
             self.owner.game.log_action(f"{self.name} was unequipped and moved to {self.owner.name}'s environs.")
 
     def apply_equipment_effects(self, target):
         for effect in self.effects:
             if effect['type'] == 'gain_attack':
                 target.attack += effect['value']
-                print(f"DEBUG: {target.name}'s attack increased by {effect['value']} to {target.attack}")
             elif effect['type'] == 'gain_defense':
                 target.defense += effect['value']
-                print(f"DEBUG: {target.name}'s defense increased by {effect['value']} to {target.defense}")
             elif effect['type'] == 'deal_damage' and effect['trigger'] == 'upkeep':
-                target.effects.append({
-                    "type": "deal_damage",
-                    "value": effect['value'],
-                    "trigger": "upkeep",
-                    "source_id": self.id,
-                    "source_name": self.name  # Add source name to identify the equipment
-                })
-                print(f"DEBUG: {target.name} gained upkeep effect to deal {effect['value']} damage")
+                # Instead of adding a new effect, just store the damage value
+                target.equipment_damage = effect['value']
+                target.equipment_damage_source = self.name
+        # Do not remove upkeep effects from the equipment itself
 
     def remove_equipment_effects(self, target):
         for effect in self.effects:
@@ -219,8 +255,3 @@ class Card:
                 ]
                 print(f"DEBUG: {target.name} lost upkeep effect to deal {effect['value']} damage")
 
-
-
-def check_and_destroy(self, game):
-    if self.defense <= 0:
-        self.destroy(game)

@@ -122,10 +122,21 @@ class Game:
     # input("Press Enter to continue to the next turn...")
 
     def apply_effects(self, player):
+        processed_effects = set()  # Add this line at the beginning of the function
         for card in player.battlezone + player.environs:
+            if hasattr(card, 'equipment_damage') and card.equipment_damage > 0:
+                target = self.select_target(card_type="creature", effect_description=f"{card.equipment_damage_source} can deal {card.equipment_damage} damage to any target creature:", player=player)
+                if target:
+                    target.receive_damage(card.equipment_damage)
+                    self.log_action(f"{card.equipment_damage_source} dealt {card.equipment_damage} damage to {target.name} (ID: {target.id})")
+            
             for effect in card.effects:
+                effect_key = (card.id, effect['type'], effect.get('source_id'))
+                if effect_key in processed_effects:
+                    print(f"DEBUG: Skipping already processed effect: {effect}")
+                    continue
+                processed_effects.add(effect_key)
                 if 'trigger' not in effect:
-                    #print(f"DEBUG: Effect missing 'trigger' key in card {card.name} (ID: {card.id})")
                     continue
                 trigger = Trigger(effect['trigger'])
                 if trigger.check(self, player):
