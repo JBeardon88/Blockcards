@@ -29,8 +29,11 @@ def upkeep_phase(board, player=True):
                         continue  # Skip effects for unequipped equipment
                 effect_key = (card.id, effect['type'])
                 if effect_key in triggered_effects:
+                    print(f"DEBUG: Skipping duplicate effect for {card.name} (ID: {card.id})")
                     continue  # Skip if this effect has already been triggered this turn
                 triggered_effects.add(effect_key)
+                
+                print(f"DEBUG: Triggering upkeep effect for {card.name} (ID: {card.id}): {effect}")
                 
                 if effect['type'] == 'increase_energy_regen':
                     effect_instance = Effect(effect['type'], effect['value'], effect['trigger'], card.id)

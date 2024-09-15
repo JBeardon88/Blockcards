@@ -1,8 +1,8 @@
 import uuid
 from colorama import Fore, Style
 from utils import check_and_destroy
-from effects import Effect, create_effect
-
+from effects import Effect, create_effect, Trigger
+from player import Player
 
 class Card:
     def __init__(self, name, attack, defense, cost, description, card_type, effects=None, flavor_text="", owner=None):
@@ -67,17 +67,16 @@ class Card:
 
 
     def destroy(self, game):
-        while self.defense <= 0:
-            if self.equipment:
-                game.log_action(f"{self.equipment.name} was unequipped from {self.name}")
-                self.equipment.unequip()
-                self.equipment = None
-            else:
-                owner = game.player if self in game.player.battlezone else game.opponent
-                owner.battlezone.remove(self)
-                owner.graveyard.append(self)
-                game.log_action(f"{self.name} was destroyed and moved to {owner.name}'s graveyard.")
-                break
+        print(f"DEBUG: Destroying {self.name} (ID: {self.id})")
+        if self.card_type == "creature" and self.equipment:
+            for equip in self.equipment:
+                equip.unequip(game)
+        if self in self.owner.battlezone:
+            self.owner.battlezone.remove(self)
+        elif self in self.owner.environs:
+            self.owner.environs.remove(self)
+        self.owner.graveyard.append(self)
+        game.log_action(f"{self.name} was destroyed and moved to {self.owner.name}'s graveyard.")
 
     def fight(self, other):
         self.defense -= other.attack
@@ -95,65 +94,80 @@ class Card:
 
     def apply_effects(self, game, player):
         for effect in self.effects:
-            if 'trigger' in effect and effect['trigger'] == 'constant':
-                if self.card_type == "equipment" and not self.equipped_to:
-                    continue  # Skip effects if the equipment is not equipped
-                if self.name == "Tactical Drone":
-                    player.equipment_cost_reduction += effect.get('value', 0)
-                # Add other constant effects here
-            elif 'trigger' in effect and effect['trigger'] == 'upkeep':
-                if self.card_type == "equipment" and not self.equipped_to:
-                    continue  # Skip effects if the equipment is not equipped
-                if effect['type'] == 'deal_damage':
-                    target = game.select_target(card_type="creature", effect_description=f"{self.name} can deal {effect['value']} damage to any target creature:", player=player)
-                    if target:
-                        target.receive_damage(effect['value'])
-                        game.log_action(f"{self.name} dealt {effect['value']} damage to {target.name} (ID: {target.id})")
-                # Add other upkeep effects here
-            elif 'trigger' in effect and effect['trigger'] == 'on_cast':
-                if self.card_type == "equipment" and not self.equipped_to:
-                    continue  # Skip effects if the equipment is not equipped
-                if effect['type'] == 'draw_cards':
-                    print(f"Attempting to create effect: {effect}")
-                    effect_obj = create_effect(effect['type'], effect['value'], effect['trigger'], self.id)
-                    print(f"Effect object created: {effect_obj}")
-                    effect_obj.apply(game, player)
-                if effect['type'] == 'destroy_equipment':
-                    effect_value = effect.get('value', 0)  # Provide a default value of 0 if 'value' key is missing
-                    target = game.select_target(card_type="equipment", effect_description=f"{self.name} can destroy {effect_value} equipment:", player=player)
-                    if target:
-                        target.destroy(game)
-                        game.log_action(f"{self.name} destroyed {target.name} (ID: {target.id})")
-                if effect['type'] == 'destroy_enchantment':
-                    effect_value = effect.get('value', 0)  # Provide a default value of 0 if 'value' key is missing
-                    target = game.select_target(card_type="enchantment", effect_description=f"{self.name} can destroy {effect_value} enchantment:", player=player)
-                    if target:
-                        target.destroy(game)
-                        game.log_action(f"{self.name} destroyed {target.name} (ID: {target.id})")
-                # Add other on_cast effects here
-                # Add other on_cast effects here
-
+            print(f"DEBUG: Processing effect for {self.name}: {effect}")
+            if 'trigger' in effect:
+                if effect['trigger'] == 'constant':
+                    if effect['type'] == 'equipment_cost_reduction':
+                        value = effect.get('value', 0)
+                        player.update_effect_modifier('equipment_cost_reduction', value)
+                        print(f"DEBUG: Applied equipment_cost_reduction of {value} for {self.name}")
+                    # Add other constant effects here
+                elif effect['trigger'] == 'upkeep':
+                    if self.card_type == "equipment" and not self.equipped_to:
+                        continue  # Skip effects if the equipment is not equipped
+                    if effect['type'] == 'deal_damage':
+                        target = game.select_target(card_type="creature", effect_description=f"{self.name} can deal {effect['value']} damage to any target creature:", player=player)
+                        if target:
+                            target.receive_damage(effect['value'])
+                            game.log_action(f"{self.name} dealt {effect['value']} damage to {target.name} (ID: {target.id})")
+                    # Add other upkeep effects here
+                elif effect['trigger'] == 'on_cast':
+                    if self.card_type == "equipment" and not self.equipped_to:
+                        continue  # Skip effects if the equipment is not equipped
+                    if effect['type'] == 'draw_cards':
+                        print(f"Attempting to create effect: {effect}")
+                        effect_obj = create_effect(effect['type'], effect['value'], effect['trigger'], self.id)
+                        print(f"Effect object created: {effect_obj}")
+                        effect_obj.apply(game, player)
+                    elif effect['type'] == 'destroy_equipment':
+                        effect_value = effect.get('value', 0)  # Provide a default value of 0 if 'value' key is missing
+                        target = game.select_target(card_type="equipment", effect_description=f"{self.name} can destroy {effect_value} equipment:", player=player)
+                        if target:
+                            target.destroy(game)
+                            game.log_action(f"{self.name} destroyed {target.name} (ID: {target.id})")
+                    elif effect['type'] == 'destroy_enchantment':
+                        effect_value = effect.get('value', 0)  # Provide a default value of 0 if 'value' key is missing
+                        target = game.select_target(card_type="enchantment", effect_description=f"{self.name} can destroy {effect_value} enchantment:", player=player)
+                        if target:
+                            target.destroy(game)
+                            game.log_action(f"{self.name} destroyed {target.name} (ID: {target.id})")
+                    elif effect['type'] == 'deal_damage':
+                        print(f"DEBUG: Triggering on_cast deal_damage effect: {effect}")
+                        target = game.select_target(card_type="creature_or_player", effect_description=f"{self.name} can deal {effect['value']} damage to any target:", player=player)
+                        if target:
+                            if isinstance(target, Player):
+                                target.take_damage(effect['value'])
+                                game.log_action(f"{self.name} dealt {effect['value']} damage to {target.name}")
+                            else:
+                                target.receive_damage(effect['value'])
+                                game.log_action(f"{self.name} dealt {effect['value']} damage to {target.name} (ID: {target.id})")
+                        else:
+                            print(f"DEBUG: No target selected for deal_damage effect")
+            else:
+                print(f"DEBUG: Effect has no trigger: {effect}")
 
     def remove_effects(self, game, player):
         for effect in self.effects:
             if 'trigger' in effect and effect['trigger'] == 'constant':
-                if self.card_type == "equipment" and not self.equipped_to:
-                    continue  # Skip effects if the equipment is not equipped
-                if self.name == "Tactical Drone":
-                    player.equipment_cost_reduction -= effect.get('value', 0)
+                if effect['type'] == 'equipment_cost_reduction':
+                    value = effect.get('value', 0)
+                    player.update_effect_modifier('equipment_cost_reduction', -value)
+                    print(f"DEBUG: Removed equipment_cost_reduction of {value} for {self.name}")
                 # Add other constant effects here
 
     def get_adjusted_cost(self, player):
         original_cost = str(self.cost).rjust(3)
         if self.card_type == "equipment":
-            adjusted_cost = max(0, self.cost - player.equipment_cost_reduction)
+            adjusted_cost = self.get_numeric_adjusted_cost(player)
             if adjusted_cost != self.cost:
                 return f"{Fore.BLUE}{str(adjusted_cost).rjust(3)}{Style.RESET_ALL}"
         return original_cost
 
     def get_numeric_adjusted_cost(self, player):
         if self.card_type == "equipment":
-            return max(0, self.cost - player.equipment_cost_reduction)
+            reduction = player.effect_modifiers.get('equipment_cost_reduction', 0)
+            adjusted_cost = max(0, self.cost - reduction)
+            return adjusted_cost
         return self.cost
 
     def equip(self, target):
@@ -166,9 +180,11 @@ class Card:
 
     def unequip(self):
         if self.equipped_to:
-            self.remove_equipment_effects(self.equipped_to)
+            print(f"DEBUG: Unequipping {self.name} from {self.equipped_to.name}")
             self.equipped_to.equipment = None
             self.equipped_to = None
+            self.owner.environs.append(self)
+            self.owner.game.log_action(f"{self.name} was unequipped and moved to {self.owner.name}'s environs.")
 
     def apply_equipment_effects(self, target):
         for effect in self.effects:

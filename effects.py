@@ -19,9 +19,11 @@ class Effect:
         self.trigger = trigger
         self.source_id = source_id
         self.applied = False
+        
 
     def apply(self, game: 'Game', player: 'Player', card_played=None):
-        if self.applied and self.trigger != "constant":
+        print(f"DEBUG: Applying effect: {self.effect_type}")
+        if self.applied and self.trigger not in ["constant", "on_equip"]:
             return
         effect_handlers = {
             "increase_energy_regen": self.increase_energy_regen,
@@ -29,14 +31,15 @@ class Effect:
             "deal_damage": self.deal_damage,
             "destroy_equipment": self.destroy_equipment,
             "destroy_enchantment": self.destroy_enchantment,
-            "reduce_equipment_cost": self.reduce_equipment_cost,
+            "equipment_cost_reduction": self.equipment_cost_reduction,
             "gain_defense": self.gain_defense
         }
         handler = effect_handlers.get(self.effect_type)
         if handler:
             game.log_action(f"Effect triggered: {self.effect_type} from card ID {self.source_id}")
             handler(game, player)
-            self.applied = True
+            if self.trigger != "constant":
+                self.applied = True
         else:
             game.log_action(f"Unknown effect type: {self.effect_type}")
 
@@ -51,7 +54,7 @@ class Effect:
                 game.log_action(f"{player.name} drew card {card.name} (ID: {card.id})")
 
     def deal_damage(self, game: 'Game', player: 'Player'):
-        print(f"DEBUG: Attempting to deal damage")
+        print(f"DEBUG: Attempting to deal {self.value} damage")
         target = game.select_target(card_type="creature_or_player", effect_description=f"Select a target to deal {self.value} damage:", player=player)
         if target:
             print(f"DEBUG: Target selected: {target.name} (ID: {target.id})")
@@ -76,23 +79,21 @@ class Effect:
             game.log_action(f"{player.name} tried to gain defense but no valid target was found.")
 
     def destroy_equipment(self, game: 'Game', player: 'Player'):
-        target = game.select_target(card_type="equipment", effect_description="Select an equipment to destroy:", player=player)
-        self.handle_destruction(game, player, target, "equipment")
-
+        print(f"DEBUG: Attempting to destroy equipment")
+        target = game.select_target(card_type="equipment", effect_description="Select equipment to destroy:", player=player)
+        if target:
+            print(f"DEBUG: Target selected: {target.name} (ID: {target.id})")
+            target.destroy(game)
+        else:
+            game.log_action(f"{player.name} tried to destroy equipment but no valid target was found.")
+            print(f"DEBUG: No valid target found for destroy_equipment effect")
 
     def destroy_enchantment(self, game: 'Game', player: 'Player'):
         print(f"DEBUG: Attempting to destroy an enchantment")
         target = game.select_target(card_type="enchantment", effect_description="Select an enchantment to destroy:", player=player)
         if target:
             print(f"DEBUG: Target selected: {target.name} (ID: {target.id})")
-            if target in target.owner.environs:
-                target.owner.environs.remove(target)
-                target.owner.graveyard.append(target)
-                game.log_action(f"{player.name} destroyed enchantment {target.name} (ID: {target.id}) owned by {target.owner.name}")
-                print(f"DEBUG: Enchantment destroyed and moved to graveyard")
-            else:
-                game.log_action(f"Failed to destroy {target.name}: not found in environs.")
-                print(f"DEBUG: Failed to destroy enchantment: not found in environs")
+            target.destroy(game)
         else:
             game.log_action(f"{player.name} tried to destroy an enchantment but no valid target was found.")
             print(f"DEBUG: No valid target found for destroy_enchantment effect")
@@ -107,9 +108,10 @@ class Effect:
         else:
             game.log_action(f"{player.name} tried to destroy a {card_type} but no valid target was found.")
 
-    def reduce_equipment_cost(self, game: 'Game', player: 'Player'):
-        player.equipment_cost_reduction += self.value
-        game.log_action(f"{player.name}'s equipment cost reduced by {self.value}")
+    def equipment_cost_reduction(self, game: 'Game', player: 'Player'):
+        current_reduction = player.effect_modifiers.get('equipment_cost_reduction', 0)
+        player.effect_modifiers['equipment_cost_reduction'] = max(current_reduction, self.value)
+        game.log_action(f"{player.name}'s equipment cost reduction set to {player.effect_modifiers['equipment_cost_reduction']}")
 
 class Trigger:
     def __init__(self, trigger_type):
@@ -120,4 +122,8 @@ class Trigger:
             return game.turn_phase == "upkeep"
         elif self.trigger_type == "on_play_equipment":
             return game.last_played_card and game.last_played_card.card_type == "equipment"
+        elif self.trigger_type == "constant":
+            return True
         return False
+
+

@@ -92,46 +92,7 @@ class Board:
         for card in self.player.environs:
             print(f"  {card.name} (Attack: {card.attack}, Defense: {card.defense}, Cost: {card.cost})")
 
-    def play_card(self, card, player=True):
-        target_player = self.player if player else self.opponent
-        adjusted_cost = card.cost
-        if card.card_type == "equipment":
-            adjusted_cost = max(0, card.cost - target_player.calculate_equipment_cost_reduction())
-        if target_player.spend_energy(adjusted_cost):
-            card.owner = target_player  # Set the card's owner
-            target_player.hand.remove(card)
-            if card.card_type == "creature":
-                target_player.battlezone.append(card)
-                card.tap()  # Tap the creature when it's played
-                self.game.summon_effects(card, target_player)
-            elif card.card_type in ["enchantment", "equipment"]:
-                target_player.environs.append(card)
-                if card.card_type == "equipment":
-                    self.game.last_played_card = card
-                    self.game.check_triggers(target_player, "on_play_equipment", card)
-            elif card.card_type == "spell":
-                # Apply spell effects immediately
-                for effect in card.effects:
-                    effect_instance = Effect(effect['type'], effect.get('value'), effect['trigger'], card.id)
-                    effect_instance.apply(self.game, target_player, card_played=card)
-                # Move spell to graveyard after resolving
-                self.move_card_to_graveyard(card, player)
-            else:
-                # For any unhandled card types, move them to graveyard
-                self.move_card_to_graveyard(card, player)
-                self.game.log_action(f"Unhandled card type {card.card_type}. {card.name} moved to graveyard.")
-            
-            self.game.log_action(f"{target_player.name} played {card.name}")
-            self.game.update_display()  # Update display after playing a card
-            
-            # Check triggers for all card types
-            self.game.check_triggers(target_player, "on_play", card)
-            
-            print(f"DEBUG: Played card {card.name} with ID {card.id}")
-            return True
-        else:
-            self.game.log_action(f"Insufficient energy to play {card.name}.")
-            return False
+
 
     def get_all_cards(self):
         return self.player.battlezone + self.player.environs + self.player.graveyard + self.opponent.battlezone + self.opponent.environs + self.opponent.graveyard

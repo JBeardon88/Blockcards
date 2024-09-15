@@ -15,9 +15,7 @@ def ai_main_phase(game):
     if playable_cards:
         card_to_play = random.choice(playable_cards)
         game.log_action(f"AI attempts to play {card_to_play.name}", Fore.YELLOW)
-        if game.board.play_card(card_to_play, player=False):
-            if card_to_play in ai_player.hand:
-                ai_player.hand.remove(card_to_play)
+        if ai_player.play_card(card_to_play):  # Changed from game.player to ai_player
             game.log_action(f"AI successfully played {card_to_play.name}", Fore.GREEN)
         else:
             game.log_action(f"AI failed to play {card_to_play.name}", Fore.RED)

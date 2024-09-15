@@ -26,6 +26,9 @@ class Player:
         self.applied_effects = {}
         self.game_log = []
         self.equipment_cost_reduction = 0
+        self.effect_modifiers = {
+            'equipment_cost_reduction': 0
+        }
 
     def draw_card(self):
         if self.deck:
@@ -67,32 +70,55 @@ class Player:
     def recalculate_energy_regen(self):
         self.energy_regen = self.base_energy_regen + sum(effect['value'] for effect in self.energy_regen_effects)
 
-    def play_card(self, card: 'Card'):
+    def play_card(self, card: 'Card', **kwargs):
+        print(f"DEBUG: Attempting to play {card.name} (Type: {card.card_type})")
         if hasattr(card, 'get_numeric_adjusted_cost') and hasattr(card, 'card_type'):
             adjusted_cost = card.get_numeric_adjusted_cost(self)
             if self.energy >= adjusted_cost:
                 self.energy -= adjusted_cost
-                self.hand.remove(card)
+                
+                # Check if the card is in hand
+                card_in_hand = next((c for c in self.hand if c.name == card.name), None)
+                if card_in_hand:
+                    self.hand.remove(card_in_hand)
+                else:
+                    print(f"DEBUG: Card {card.name} not found in hand. Current hand: {[c.name for c in self.hand]}")
+                    return False
+                
+                card.owner = self  # Set the card's owner
                 
                 if card.card_type == "spell":
+                    print(f"DEBUG: Playing spell card {card.name}")
+                    print(f"DEBUG: Card effects: {card.effects}")
                     self.game.log_action(f"{self.name} cast {card.name}.")
                     card.apply_effects(self.game, self)
+                    print(f"DEBUG: After applying effects")
                     self.graveyard.append(card)
                     self.game.log_action(f"{card.name} was moved to {self.name}'s graveyard.")
                 elif card.card_type in ["environ", "enchantment", "equipment"]:
                     self.environs.append(card)
                     self.game.log_action(f"{self.name} played {card.name} to the environs.")
+                    if card.card_type == "equipment":
+                        self.game.last_played_card = card
+                        self.game.check_triggers(self, "on_play_equipment", card)
                 elif card.card_type == "creature":
                     self.battlezone.append(card)
                     card.summoning_sickness = True
                     card.tapped = True
                     self.game.log_action(f"{self.name} played {card.name} to the battlezone.")
+                    card.apply_effects(self.game, self)  # Apply effects immediately for creatures
+                    self.game.summon_effects(card, self)
                 else:
                     self.graveyard.append(card)
                     self.game.log_action(f"Unhandled card type {card.card_type}. {card.name} moved to graveyard.")
                 
                 if card.card_type != "spell":
                     card.apply_effects(self.game, self)
+                
+                self.game.check_triggers(self, "on_play", card)
+                self.game.update_display()  # Update display after playing a card
+                
+                print(f"DEBUG: Successfully played card {card.name} with ID {card.id}")
                 return True
             else:
                 print(f"Not enough energy to play {card.name}. It costs {adjusted_cost}, but you only have {self.energy} energy.")
@@ -143,10 +169,8 @@ class Player:
         return None
 
     def calculate_equipment_cost_reduction(self):
-        reduction = 0
-        for card in self.battlezone:
-            if card.name == "Tactical Drone":
-                reduction += 1
+        reduction = self.effect_modifiers['equipment_cost_reduction']
+        print(f"DEBUG: Current equipment cost reduction: {reduction}")
         return reduction
 
     def equip_card(self, equipment_index, target_index):
@@ -172,3 +196,11 @@ class Player:
                 self.game.log_action(f"{creature.name}'s attack is now {creature.attack}")
                 return True
         return False
+
+    def update_effect_modifier(self, effect_type, value):
+        self.effect_modifiers[effect_type] = value
+        print(f"DEBUG: Updated {effect_type} for {self.name}. New value: {self.effect_modifiers[effect_type]}")
+
+    def remove_effect_modifier(self, effect_type, value):
+        if effect_type in self.effect_modifiers:
+            self.effect_modifiers[effect_type] -= value

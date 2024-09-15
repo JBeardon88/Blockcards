@@ -165,8 +165,10 @@ def display_cards_in_play(player, card_type=None, show_equipment=False):
         equipped_to = card.equipped_to.name if hasattr(card, 'equipped_to') and card.equipped_to else "None"
         equip_info = f"On: {equipped_to[:15]}" if card.card_type == "equipment" else ""
         
+        adjusted_cost = card.get_adjusted_cost(player)
+        
         print(f"{color}{i}: {card.name}{Style.RESET_ALL}")
-        print(f"{color}   Type: {card.card_type} Cost: {card.cost}{Style.RESET_ALL}")
+        print(f"{color}   Type: {card.card_type} Cost: {adjusted_cost}{Style.RESET_ALL}")
         print(f"{color}   A/D: {card.attack}/{card.defense} | ID: {card.id[:8]}{Style.RESET_ALL}")
         if equip_info:
             print(f"{color}   {equip_info}{Style.RESET_ALL}")

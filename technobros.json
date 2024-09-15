@@ -93,7 +93,7 @@
         "description": "Reduces the cost of all your equipment by 1 Energy while it's on the field.",
         "card_type": "creature",
         "effects": [
-            {"type": "reduce_equipment_cost", "value": 1, "trigger": "constant"}
+            {"type": "equipment_cost_reduction", "value": 1, "trigger": "constant"}
         ]
     },
     {

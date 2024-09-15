@@ -9,7 +9,7 @@ from colorama import Fore, Back, Style
 from ai import ai_make_decisions, ai_upkeep, ai_main_phase, ai_combat_phase, ai_end_phase, ai_can_play_card
 import textwrap
 from combat import combat_phase as execute_combat_phase
-from effects import Effect, Trigger
+from effects import Effect, Trigger, create_effect
 from player import Player
 
 class Game:
@@ -61,9 +61,10 @@ class Game:
         self.log_action("Game Over!")
 
     def apply_constant_effects(self, player):
-        player.equipment_cost_reduction = 0  # Reset the reduction
+        player.effect_modifiers['equipment_cost_reduction'] = 0  # Reset the reduction
         for card in player.battlezone + player.environs:
             card.apply_effects(self, player)
+        print(f"DEBUG: After applying constant effects, equipment_cost_reduction = {player.effect_modifiers['equipment_cost_reduction']}")
 
     def turn_flow(self, current_player):
         print(f"DEBUG: Starting turn for {current_player.name}")
@@ -360,34 +361,15 @@ class Game:
             self.opponent.draw_card()
         display_game_state(self)
 
-        
-    def play_card(self, player, card=None):
-        if player == self.player:
-            # Human player logic
-            while True:
-                try:
-                    card_input = input("Select a card to play by index (or 'cancel' to go back): ").strip().lower()
-                    if card_input == 'cancel':
-                        print(Fore.YELLOW + "Cancelled card play." + Style.RESET_ALL)
-                        return
 
-                    card_index = int(card_input) - 1
-                    if 0 <= card_index < len(player.hand):
-                        card = player.hand[card_index]
-                        if self.board.play_card(card, player=True):
-                            return card
-                        else:
-                            print(Fore.RED + "Insufficient energy to play this card." + Style.RESET_ALL)
-                    else:
-                        print(Fore.RED + "Invalid card index. Please try again." + Style.RESET_ALL)
-                except ValueError:
-                    print(Fore.RED + "Invalid input. Please enter a number or 'cancel'." + Style.RESET_ALL)
-        else:
-            # AI player logic
-            if card and self.board.play_card(card, player=False):
-                return True
-            else:
-                return False
+
+    def check_on_play_equipment_triggers(self, player):
+        for card in player.battlezone + player.environs:
+            for effect in card.effects:
+                if effect.get('trigger') == 'on_play_equipment':
+                    print(f"DEBUG: Triggering on_play_equipment effect for {card.name} (ID: {card.id})")
+                    effect_obj = create_effect(effect['type'], effect['value'], effect['trigger'], card.id)
+                    effect_obj.apply(self, player)
 
     def check_board_effects(self, player, card_played):
         for card in self.board.get_all_cards():
@@ -481,15 +463,7 @@ class Game:
 
     def select_target(self, card_type=None, effect_description=None, player=None):
         print(f"DEBUG: Selecting target for {effect_description}")
-        valid_targets = []
-        if card_type == "creature_or_player":
-            valid_targets = [card for card in self.board.get_all_cards() if card.card_type in ["creature", "player"]]
-        elif card_type == "enchantment":
-            valid_targets = [card for card in self.board.get_all_cards() if card.card_type == "enchantment"]
-        elif card_type == "equipment":
-            valid_targets = [card for card in self.board.get_all_cards() if card.card_type == "equipment"]
-        # Add other card type checks here
-
+        valid_targets = self.get_valid_targets(card_type)
         if not valid_targets:
             print(f"DEBUG: No valid targets found for {card_type}")
             return None
@@ -505,14 +479,13 @@ class Game:
         print(f"{len(valid_targets) + 2}. Cancel")
 
         while True:
-            choice = input(f"Enter your choice (1-{len(valid_targets) + 2}): ").strip()
-            if choice.isdigit():
-                choice = int(choice)
+            try:
+                choice = int(input(f"Enter your choice (1-{len(valid_targets) + 2}): "))
+                if choice == len(valid_targets) + 2:
+                    return None
                 if 1 <= choice <= len(valid_targets):
-                    selected_target = valid_targets[choice - 1]
-                    print(f"DEBUG: Selected target: {selected_target.name} (ID: {selected_target.id})")
-                    return selected_target
-                elif choice == len(valid_targets) + 1:
+                    return valid_targets[choice - 1]
+                if choice == len(valid_targets) + 1:
                     id_prefix = input("Enter the first four digits of the target card ID: ").strip().lower()
                     custom_targets = self.find_cards_by_id_prefix(id_prefix)
                     custom_targets = [card for card in custom_targets if self.is_legal_target(card, card_type)]
@@ -520,9 +493,23 @@ class Game:
                         return custom_targets[0]
                     else:
                         print(f"No valid {card_type if card_type else 'card'} found with that ID.")
-                elif choice == len(valid_targets) + 2:
-                    return None
-            print("Invalid choice. Please try again.")
+                print("Invalid choice. Please try again.")
+            except ValueError:
+                print("Invalid input. Please enter a number.")
+
+    def get_valid_targets(self, card_type):
+        valid_targets = []
+        if card_type == "creature_or_player":
+            valid_targets.extend([self.player, self.opponent])
+            valid_targets.extend(self.player.battlezone + self.opponent.battlezone)
+        elif card_type == "creature":
+            valid_targets.extend(self.player.battlezone + self.opponent.battlezone)
+        elif card_type == "enchantment":
+            valid_targets.extend([card for card in self.player.environs + self.opponent.environs if card.card_type == "enchantment"])
+        elif card_type == "equipment":
+            valid_targets.extend([card for card in self.player.environs + self.opponent.environs if card.card_type == "equipment"])
+        # Add other card type checks here if needed
+        return valid_targets
 
     def get_legal_targets(self, card_type=None, player=None):
         legal_targets = []
