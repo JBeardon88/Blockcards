@@ -11,6 +11,7 @@ import textwrap
 from combat import combat_phase as execute_combat_phase
 from effects import Effect, Trigger, create_effect
 from player import Player
+import os
 
 class Game:
     def __init__(self, player_name, opponent_name):
@@ -29,19 +30,33 @@ class Game:
         
         self.log_action(f"Game initialized. Player energy: {self.player.energy}, Opponent energy: {self.opponent.energy}")
         
-        #self.log_action(f"Game initialized. Player energy: {self.player.energy}, Opponent energy: {self.opponent.energy}")
-
-    def log_action(self, action, color=Fore.WHITE):
-        timestamp = f"[Turn {self.turn_counter}]"
-        player = "Player" if self.player_turn else "Opponent"
-        log_entry = f"{timestamp} {player}: {action}"
-        self.game_log.append((log_entry, color))
-        print(color + log_entry + Style.RESET_ALL)  # Print the log entry immediately
-
+    def load_card_pool(self):
+        sets_dir = os.path.join(os.path.dirname(__file__), 'sets')
+        available_sets = [f for f in os.listdir(sets_dir) if f.endswith('.json')]
+        
+        print("Available sets:")
+        for i, set_file in enumerate(available_sets, 1):
+            print(f"{i}. {set_file}")
+        
+        player_choice = int(input("Select a set for your deck: ")) - 1
+        opponent_choice = (player_choice + 1) % len(available_sets)
+        
+        player_set = available_sets[player_choice]
+        opponent_set = available_sets[opponent_choice]
+        
+        print(f"Player selected set: {player_set}")
+        print(f"Opponent will use set: {opponent_set}")
+        
+        self.card_pool = self.load_set(os.path.join(sets_dir, player_set))
+        self.opponent_card_pool = self.load_set(os.path.join(sets_dir, opponent_set))
+        
+    def load_set(self, set_path):
+        with open(set_path, 'r') as file:
+            return json.load(file)
+        
     def start(self):
         self.log_action(f"Starting game. Player energy: {self.player.energy}, Opponent energy: {self.opponent.energy}")
-        self.load_card_pool()
-        self.board.reset(self.card_pool)
+        self.board.reset(self.card_pool, self.opponent_card_pool)
         self.initial_draw()
         self.log_action(f"After setup. Player energy: {self.player.energy}, Opponent energy: {self.opponent.energy}")
         
@@ -114,12 +129,6 @@ class Game:
                 self.log_action(error_message, Fore.RED)
                 print(error_message)
             self.update_display()
-
-    # Remove this line as it's already handled in the start method
-    # self.player_turn = not self.player_turn
-
-    # Remove the input prompt here as it's already in the start method
-    # input("Press Enter to continue to the next turn...")
 
     def apply_effects(self, player):
         processed_effects = set()  # Add this line at the beginning of the function
@@ -360,11 +369,6 @@ class Game:
 
     def execute_combat_phase(self):
         execute_combat_phase(self)
-
-    def load_card_pool(self):
-            with open('technobros.json') as f:
-                self.card_pool = json.load(f)
-                print(f"DEBUG: Loaded card pool with {len(self.card_pool)} cards")
 
     def initial_draw(self):
         for _ in range(6):

@@ -12,19 +12,7 @@ class Board:
         self.opponent = opponent
         self.game = game  # Store the reference to the Game instance
 
-    def reshuffle_deck(self, player=True):
-        if player:
-            self.player.deck.extend(self.player.graveyard)
-            self.player.graveyard.clear()
-            random.shuffle(self.player.deck)
-            print(Fore.GREEN + "Player's deck reshuffled!")
-        else:
-            self.opponent.deck.extend(self.opponent.graveyard)
-            self.opponent.graveyard.clear()
-            random.shuffle(self.opponent.deck)
-            print(Fore.GREEN + "Opponent's deck reshuffled!")
-
-    def reset(self, card_pool, deck_size=30):
+    def reset(self, player_card_pool, opponent_card_pool, deck_size=30):
         self.player.hand.clear()
         self.player.graveyard.clear()
         self.player.battlezone.clear()
@@ -42,11 +30,8 @@ class Board:
         self.player.energy = 2
         self.opponent.energy = 2
 
-        self.build_deck(card_pool, deck_size, player=True)
-        self.build_deck(card_pool, deck_size, player=False)
-        print(Fore.GREEN + "Game reset!")
-        self.build_deck(card_pool, deck_size, player=True)
-        self.build_deck(card_pool, deck_size, player=False)
+        self.build_deck(player_card_pool, deck_size, player=True)
+        self.build_deck(opponent_card_pool, deck_size, player=False)
         print(Fore.GREEN + "Game reset!")
 
     def build_deck(self, card_pool, deck_size=30, player=True):

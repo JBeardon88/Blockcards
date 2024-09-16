@@ -180,7 +180,8 @@
     },
     {
         "name": "Data Surge",
-
+        "attack": 0,
+        "defense": 0,
         "cost": 2,
         "description": "Draw 2 cards.",
         "card_type": "spell",
@@ -195,7 +196,8 @@
     },
     {
         "name": "Plasma Blast",
-
+        "attack": 0,
+        "defense": 0,
         "cost": 3,
         "description": "Deal 3 damage to target creature or player.",
         "card_type": "spell",
@@ -211,7 +213,8 @@
     },
     {
         "name": "EMP Pulse",
-
+        "attack": 0,
+        "defense": 0,
         "cost": 2,
         "description": "Destroy 1 equipment.",
         "card_type": "spell",
@@ -226,7 +229,8 @@
     },
     {
         "name": "Code Erasure",
-
+        "attack": 0,
+        "defense": 0,
         "cost": 2,
         "description": "Destroy 1 enchantment.",
         "card_type": "spell",
